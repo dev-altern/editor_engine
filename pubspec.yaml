@@ -1,0 +1,15 @@
+name: editor_engine
+description: "A state-of-the-art, pure Dart editor engine with ProseMirror-grade document model, transactional editing, and collaborative editing support."
+version: 0.0.1
+homepage:
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  collection: ^1.18.0
+  meta: ^1.16.0
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^5.1.0
