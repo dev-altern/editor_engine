@@ -41,16 +41,16 @@ class Mark {
 
   /// Serializes this mark to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
-        'type': type,
-        if (attrs.isNotEmpty) 'attrs': attrs,
-      };
+    'type': type,
+    if (attrs.isNotEmpty) 'attrs': attrs,
+  };
 
   /// Deserializes a mark from a JSON-compatible map.
   factory Mark.fromJson(Map<String, dynamic> json) => Mark(
-        json['type'] as String,
-        (json['attrs'] as Map<String, dynamic>?)?.cast<String, Object?>() ??
-            const {},
-      );
+    json['type'] as String,
+    (json['attrs'] as Map<String, dynamic>?)?.cast<String, Object?>() ??
+        const {},
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -60,11 +60,11 @@ class Mark {
           const DeepCollectionEquality().equals(attrs, other.attrs);
 
   @override
-  int get hashCode => Object.hash(type, const DeepCollectionEquality().hash(attrs));
+  int get hashCode =>
+      Object.hash(type, const DeepCollectionEquality().hash(attrs));
 
   @override
-  String toString() =>
-      attrs.isEmpty ? 'Mark($type)' : 'Mark($type, $attrs)';
+  String toString() => attrs.isEmpty ? 'Mark($type)' : 'Mark($type, $attrs)';
 
   // ── Common mark constructors ──────────────────────────────────────────
 
@@ -90,17 +90,14 @@ class Mark {
   static const Mark subscript = Mark('subscript');
 
   /// Link mark with the given [href].
-  static Mark link(String href, {String? title}) => Mark('link', {
-        'href': href,
-        'title': ?title,
-      });
+  static Mark link(String href, {String? title}) =>
+      Mark('link', {'href': href, 'title': ?title});
 
   /// Text color mark.
   static Mark color(String color) => Mark('color', {'color': color});
 
   /// Background highlight mark.
-  static Mark highlight(String color) =>
-      Mark('highlight', {'color': color});
+  static Mark highlight(String color) => Mark('highlight', {'color': color});
 }
 
 // ── Mark set utilities ────────────────────────────────────────────────────

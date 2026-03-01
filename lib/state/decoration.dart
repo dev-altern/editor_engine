@@ -21,10 +21,7 @@ import 'selection.dart';
 @immutable
 class DecorationSpec {
   /// Creates a decoration spec.
-  const DecorationSpec({
-    required this.type,
-    this.attrs = const {},
-  });
+  const DecorationSpec({required this.type, this.attrs = const {}});
 
   /// The decoration type name (e.g., "search-highlight", "lint-warning").
   final String type;
@@ -40,7 +37,7 @@ class DecorationSpec {
           _mapsEqual(attrs, other.attrs);
 
   @override
-  int get hashCode => Object.hash(type, Object.hashAll(attrs.entries));
+  int get hashCode => Object.hash(type, _mapHash(attrs));
 
   @override
   String toString() {
@@ -97,12 +94,7 @@ sealed class Decoration {
 @immutable
 class InlineDecoration extends Decoration {
   /// Creates an inline decoration spanning [from]..[to].
-  const InlineDecoration(
-    this.from,
-    this.to,
-    this.attrs, {
-    this.spec,
-  });
+  const InlineDecoration(this.from, this.to, this.attrs, {this.spec});
 
   /// The start position of the decorated range (inclusive).
   final int from;
@@ -139,7 +131,7 @@ class InlineDecoration extends Decoration {
           _mapsEqual(attrs, other.attrs);
 
   @override
-  int get hashCode => Object.hash(from, to, spec, Object.hashAll(attrs.entries));
+  int get hashCode => Object.hash(from, to, spec, _mapHash(attrs));
 
   @override
   String toString() {
@@ -191,7 +183,7 @@ class NodeDecoration extends Decoration {
           _mapsEqual(attrs, other.attrs);
 
   @override
-  int get hashCode => Object.hash(pos, Object.hashAll(attrs.entries));
+  int get hashCode => Object.hash(pos, _mapHash(attrs));
 
   @override
   String toString() => 'NodeDecoration($pos, $attrs)';
@@ -220,11 +212,7 @@ class NodeDecoration extends Decoration {
 @immutable
 class WidgetDecoration extends Decoration {
   /// Creates a widget decoration at [pos].
-  const WidgetDecoration(
-    this.pos, {
-    this.side = false,
-    this.attrs = const {},
-  });
+  const WidgetDecoration(this.pos, {this.side = false, this.attrs = const {}});
 
   /// The position where the widget is inserted.
   final int pos;
@@ -255,7 +243,7 @@ class WidgetDecoration extends Decoration {
           _mapsEqual(attrs, other.attrs);
 
   @override
-  int get hashCode => Object.hash(pos, side, Object.hashAll(attrs.entries));
+  int get hashCode => Object.hash(pos, side, _mapHash(attrs));
 
   @override
   String toString() {
@@ -287,19 +275,23 @@ class WidgetDecoration extends Decoration {
 @immutable
 class DecorationSet {
   /// Creates a decoration set from a list of decorations.
-  DecorationSet(this._decorations);
+  DecorationSet(List<Decoration> decorations)
+    : _decorations = List.unmodifiable(decorations);
 
   /// An empty decoration set.
   static final DecorationSet empty = DecorationSet(const []);
 
   final List<Decoration> _decorations;
 
-  late final List<InlineDecoration> _inlines =
-      _decorations.whereType<InlineDecoration>().toList(growable: false);
-  late final List<NodeDecoration> _nodes =
-      _decorations.whereType<NodeDecoration>().toList(growable: false);
-  late final List<WidgetDecoration> _widgets =
-      _decorations.whereType<WidgetDecoration>().toList(growable: false);
+  late final List<InlineDecoration> _inlines = _decorations
+      .whereType<InlineDecoration>()
+      .toList(growable: false);
+  late final List<NodeDecoration> _nodes = _decorations
+      .whereType<NodeDecoration>()
+      .toList(growable: false);
+  late final List<WidgetDecoration> _widgets = _decorations
+      .whereType<WidgetDecoration>()
+      .toList(growable: false);
 
   // ── Size ────────────────────────────────────────────────────────────
 
@@ -351,9 +343,7 @@ class DecorationSet {
       if (from == null && to == null) return source.toList();
       final rangeFrom = from ?? 0;
       final rangeTo = to ?? _maxInt;
-      return source
-          .where((d) => d.from < rangeTo && d.to > rangeFrom)
-          .toList();
+      return source.where((d) => d.from < rangeTo && d.to > rangeFrom).toList();
     }
 
     if (from == null && to == null) return List.of(_decorations);
@@ -480,6 +470,16 @@ bool _mapsEqual(Map<String, Object?> a, Map<String, Object?> b) {
     }
   }
   return true;
+}
+
+/// Order-independent hash for `Map<String, Object?>`.
+/// Uses XOR so iteration order does not affect the result.
+int _mapHash(Map<String, Object?> m) {
+  var h = 0;
+  for (final entry in m.entries) {
+    h ^= Object.hash(entry.key, entry.value);
+  }
+  return h;
 }
 
 /// Equality check for `List<Decoration>`.

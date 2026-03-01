@@ -19,13 +19,20 @@ class Fragment {
   /// Adjacent text nodes with identical mark sets are automatically merged.
   factory Fragment(List<Node> children) {
     final merged = _mergeTextNodes(children);
-    return Fragment._(List.unmodifiable(merged), _computeSize(merged));
+    if (merged.isEmpty) return empty;
+    final unmodifiable = List<Node>.unmodifiable(merged);
+    final size = _computeSize(unmodifiable);
+    // Build prefix sums for fragments with many children (O(log n) lookup).
+    final prefixSums = unmodifiable.length >= _bsearchThreshold
+        ? _buildPrefixSums(unmodifiable)
+        : null;
+    return Fragment._(unmodifiable, size, prefixSums);
   }
 
-  const Fragment._(this._children, this._size);
+  const Fragment._(this._children, this._size, this._prefixSums);
 
   /// The empty fragment singleton (const-constructable).
-  static const Fragment empty = Fragment._([], 0);
+  static const Fragment empty = Fragment._([], 0, null);
 
   /// Creates a fragment from a single node.
   factory Fragment.from(Node node) => Fragment([node]);
@@ -34,8 +41,16 @@ class Fragment {
   factory Fragment.fromIterable(Iterable<Node> nodes) =>
       Fragment(nodes.toList());
 
+  /// Threshold above which we build prefix sums for binary search.
+  static const _bsearchThreshold = 8;
+
   final List<Node> _children;
   final int _size;
+
+  /// Prefix sums: `_prefixSums[i]` = sum of nodeSizes for children [0..i).
+  /// `_prefixSums[0] == 0`, `_prefixSums[length] == _size`.
+  /// Null for small fragments where linear scan is faster.
+  final List<int>? _prefixSums;
 
   /// The total size of this fragment in index space.
   int get size => _size;
@@ -66,11 +81,17 @@ class Fragment {
 
   /// Iterates over all child nodes.
   void forEach(void Function(Node node, int offset, int index) callback) {
-    var offset = 0;
-    for (var i = 0; i < _children.length; i++) {
-      final child = _children[i];
-      callback(child, offset, i);
-      offset += child.nodeSize;
+    if (_prefixSums != null) {
+      for (var i = 0; i < _children.length; i++) {
+        callback(_children[i], _prefixSums[i], i);
+      }
+    } else {
+      var offset = 0;
+      for (var i = 0; i < _children.length; i++) {
+        final child = _children[i];
+        callback(child, offset, i);
+        offset += child.nodeSize;
+      }
     }
   }
 
@@ -82,6 +103,13 @@ class Fragment {
     if (_children.length == 1) {
       return (node: _children[0], index: 0, innerOffset: offset);
     }
+
+    // Use binary search on prefix sums for large fragments.
+    if (_prefixSums != null) {
+      return _findChildBinary(offset);
+    }
+
+    // Linear scan for small fragments.
     var pos = 0;
     for (var i = 0; i < _children.length; i++) {
       final child = _children[i];
@@ -94,10 +122,27 @@ class Fragment {
     throw RangeError('Offset $offset is beyond fragment size $_size');
   }
 
+  ({Node node, int index, int innerOffset}) _findChildBinary(int offset) {
+    final ps = _prefixSums!;
+    // Binary search: find the largest i where ps[i] <= offset.
+    var lo = 0;
+    var hi = _children.length - 1;
+    while (lo < hi) {
+      final mid = (lo + hi + 1) >> 1;
+      if (ps[mid] <= offset) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return (node: _children[lo], index: lo, innerOffset: offset - ps[lo]);
+  }
+
   /// Returns the offset of the child at [index].
   int offsetAt(int index) {
     if (index == 0) return 0;
     if (index >= _children.length) return _size;
+    if (_prefixSums != null) return _prefixSums[index];
     var offset = 0;
     for (var i = 0; i < index; i++) {
       offset += _children[i].nodeSize;
@@ -148,8 +193,9 @@ class Fragment {
             result.add(textChild.cut(startCut, endCut));
           } else if (child.content.isNotEmpty) {
             final startCut = from > pos + 1 ? from - pos - 1 : 0;
-            final endCut =
-                end < childEnd - 1 ? end - pos - 1 : child.content.size;
+            final endCut = end < childEnd - 1
+                ? end - pos - 1
+                : child.content.size;
             result.add(child.copy(child.content.cut(startCut, endCut)));
           } else {
             result.add(child);
@@ -174,11 +220,8 @@ class Fragment {
 
   /// Deserializes a fragment from a list of JSON-compatible maps.
   static Fragment fromJson(List<dynamic> json) => Fragment(
-        json
-            .cast<Map<String, dynamic>>()
-            .map((m) => Node.nodeFromJson(m))
-            .toList(),
-      );
+    json.cast<Map<String, dynamic>>().map((m) => Node.nodeFromJson(m)).toList(),
+  );
 
   @override
   bool operator ==(Object other) {
@@ -207,6 +250,15 @@ class Fragment {
       size += child.nodeSize;
     }
     return size;
+  }
+
+  /// Builds prefix-sum array: prefixSums[i] = sum of nodeSizes for [0..i).
+  static List<int> _buildPrefixSums(List<Node> children) {
+    final sums = List<int>.filled(children.length + 1, 0);
+    for (var i = 0; i < children.length; i++) {
+      sums[i + 1] = sums[i] + children[i].nodeSize;
+    }
+    return sums;
   }
 
   /// Merges adjacent text nodes with identical mark sets.

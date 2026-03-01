@@ -79,8 +79,7 @@ class TextSelection extends Selection {
   const TextSelection({required super.anchor, required super.head});
 
   /// Creates a collapsed cursor at [pos].
-  const TextSelection.collapsed(int pos)
-      : super(anchor: pos, head: pos);
+  const TextSelection.collapsed(int pos) : super(anchor: pos, head: pos);
 
   /// Creates a selection from [anchor] to [head].
   const TextSelection.range({required super.anchor, required super.head});
@@ -93,30 +92,36 @@ class TextSelection extends Selection {
       final mapped = mapping.map(anchor, assoc: 1);
       return TextSelection.collapsed(mapped);
     }
-    return TextSelection(
-      anchor: mapping.map(anchor, assoc: -1),
-      head: mapping.map(head, assoc: 1),
-    );
+    // The "from" side (leftmost) maps with assoc: 1 (stay right of insertions),
+    // the "to" side (rightmost) maps with assoc: -1 (stay left of insertions).
+    // Preserve direction by checking which side is anchor vs head.
+    if (anchor <= head) {
+      return TextSelection(
+        anchor: mapping.map(anchor, assoc: 1),
+        head: mapping.map(head, assoc: -1),
+      );
+    } else {
+      return TextSelection(
+        anchor: mapping.map(anchor, assoc: -1),
+        head: mapping.map(head, assoc: 1),
+      );
+    }
   }
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'text',
-        'anchor': anchor,
-        'head': head,
-      };
+    'type': 'text',
+    'anchor': anchor,
+    'head': head,
+  };
 
-  factory TextSelection.fromJson(Map<String, dynamic> json) => TextSelection(
-        anchor: json['anchor'] as int,
-        head: json['head'] as int,
-      );
+  factory TextSelection.fromJson(Map<String, dynamic> json) =>
+      TextSelection(anchor: json['anchor'] as int, head: json['head'] as int);
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TextSelection &&
-          anchor == other.anchor &&
-          head == other.head;
+      other is TextSelection && anchor == other.anchor && head == other.head;
 
   @override
   int get hashCode => Object.hash(anchor, head);
@@ -137,7 +142,7 @@ class TextSelection extends Selection {
 /// (defaults to 1 for leaf/atom nodes).
 class NodeSelection extends Selection {
   const NodeSelection(int pos, [this.nodeSize = 1])
-      : super(anchor: pos, head: pos + nodeSize);
+    : super(anchor: pos, head: pos + nodeSize);
 
   /// The size of the selected node.
   final int nodeSize;
@@ -151,21 +156,19 @@ class NodeSelection extends Selection {
   @override
   Selection map(StepMap mapping) {
     final newPos = mapping.map(anchor);
-    return NodeSelection(newPos, nodeSize);
+    final newEnd = mapping.map(anchor + nodeSize);
+    return NodeSelection(newPos, newEnd - newPos);
   }
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'node',
-        'anchor': anchor,
-        if (nodeSize != 1) 'nodeSize': nodeSize,
-      };
+    'type': 'node',
+    'anchor': anchor,
+    if (nodeSize != 1) 'nodeSize': nodeSize,
+  };
 
   factory NodeSelection.fromJson(Map<String, dynamic> json) =>
-      NodeSelection(
-        json['anchor'] as int,
-        json['nodeSize'] as int? ?? 1,
-      );
+      NodeSelection(json['anchor'] as int, json['nodeSize'] as int? ?? 1);
 
   @override
   bool operator ==(Object other) =>
@@ -193,11 +196,14 @@ class NodeSelection extends Selection {
 /// Must contain at least one range.
 class MultiCursorSelection extends Selection {
   MultiCursorSelection(this.ranges)
-      : assert(ranges.isNotEmpty, 'MultiCursorSelection requires at least one range'),
-        super(
-          anchor: ranges.isNotEmpty ? ranges.last.anchor : 0,
-          head: ranges.isNotEmpty ? ranges.last.head : 0,
-        );
+    : assert(
+        ranges.isNotEmpty,
+        'MultiCursorSelection requires at least one range',
+      ),
+      super(
+        anchor: ranges.isNotEmpty ? ranges.last.anchor : 0,
+        head: ranges.isNotEmpty ? ranges.last.head : 0,
+      );
 
   /// All active selection ranges.
   final List<TextSelection> ranges;
@@ -207,14 +213,14 @@ class MultiCursorSelection extends Selection {
 
   @override
   Selection map(StepMap mapping) => MultiCursorSelection(
-        ranges.map((r) => r.map(mapping) as TextSelection).toList(),
-      );
+    ranges.map((r) => r.map(mapping) as TextSelection).toList(),
+  );
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'multi',
-        'ranges': ranges.map((r) => r.toJson()).toList(),
-      };
+    'type': 'multi',
+    'ranges': ranges.map((r) => r.toJson()).toList(),
+  };
 
   factory MultiCursorSelection.fromJson(Map<String, dynamic> json) =>
       MultiCursorSelection(
@@ -247,26 +253,20 @@ class MultiCursorSelection extends Selection {
 
 /// Selects the entire document content.
 class AllSelection extends Selection {
-  const AllSelection(int docSize)
-      : super(anchor: 0, head: docSize);
+  const AllSelection(int docSize) : super(anchor: 0, head: docSize);
 
   @override
-  Selection map(StepMap mapping) =>
-      AllSelection(mapping.map(head));
+  Selection map(StepMap mapping) => AllSelection(mapping.map(head));
 
   @override
-  Map<String, dynamic> toJson() => {
-        'type': 'all',
-        'size': head,
-      };
+  Map<String, dynamic> toJson() => {'type': 'all', 'size': head};
 
   factory AllSelection.fromJson(Map<String, dynamic> json) =>
       AllSelection(json['size'] as int);
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is AllSelection && head == other.head;
+      identical(this, other) || other is AllSelection && head == other.head;
 
   @override
   int get hashCode => head.hashCode;

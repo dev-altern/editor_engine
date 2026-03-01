@@ -35,8 +35,7 @@ class ReplaceStep extends Step {
   final Slice slice;
 
   @override
-  StepMap getMap() =>
-      StepMap.simple(from, to - from, slice.size);
+  StepMap getMap() => StepMap.simple(from, to - from, slice.size);
 
   @override
   StepResult apply(DocNode doc) {
@@ -77,15 +76,14 @@ class ReplaceStep extends Step {
 
   @override
   Map<String, dynamic> toJson() => {
-        'stepType': 'replace',
-        'from': from,
-        'to': to,
-        'slice': slice.toJson(),
-      };
+    'stepType': 'replace',
+    'from': from,
+    'to': to,
+    'slice': slice.toJson(),
+  };
 
   @override
-  String toString() =>
-      'ReplaceStep($from, $to, $slice)';
+  String toString() => 'ReplaceStep($from, $to, $slice)';
 
   // ── Replace algorithm ──
 
@@ -104,7 +102,11 @@ class ReplaceStep extends Step {
 
   /// Recursively descends the tree to find the right level for replacement.
   Node _replaceOuter(
-      ResolvedPos $from, ResolvedPos $to, Slice slice, int depth) {
+    ResolvedPos $from,
+    ResolvedPos $to,
+    Slice slice,
+    int depth,
+  ) {
     final node = $from.node(depth);
     final fromIndex = $from.index(depth);
     final toIndex = $to.index(depth);
@@ -126,11 +128,13 @@ class ReplaceStep extends Step {
         $from.depth == depth &&
         $to.depth == depth) {
       final content = node.content;
-      return node.copy(Fragment([
-        ...content.cut(0, $from.parentOffset).children,
-        ...slice.content.children,
-        ...content.cut($to.parentOffset).children,
-      ]));
+      return node.copy(
+        Fragment([
+          ...content.cut(0, $from.parentOffset).children,
+          ...slice.content.children,
+          ...content.cut($to.parentOffset).children,
+        ]),
+      );
     }
 
     // Case 4: three-way join with open slice
@@ -157,10 +161,11 @@ class ReplaceStep extends Step {
 
       // Join into one node if same type
       if (leftChild.type == rightChild.type && !leftChild.isLeaf) {
-        children.add(leftChild.copy(Fragment([
-          ...leftInner.children,
-          ...rightInner.children,
-        ])));
+        children.add(
+          leftChild.copy(
+            Fragment([...leftInner.children, ...rightInner.children]),
+          ),
+        );
       } else {
         if (leftInner.isNotEmpty || !leftChild.isLeaf) {
           children.add(leftChild.copy(leftInner));
@@ -178,8 +183,7 @@ class ReplaceStep extends Step {
         children.addAll(node.content.cut(0, $from.parentOffset).children);
       }
       final rightChild = node.content.child($to.index(depth));
-      children
-          .add(rightChild.copy(_closeSide($to, depth + 1, isLeft: false)));
+      children.add(rightChild.copy(_closeSide($to, depth + 1, isLeft: false)));
     } else {
       // Both at this depth — simple cut and join
       children.addAll(node.content.cut(0, $from.parentOffset).children);
@@ -196,7 +200,11 @@ class ReplaceStep extends Step {
 
   /// Joins left side + slice content + right side for open slices.
   Fragment _joinThreeWay(
-      ResolvedPos $from, ResolvedPos $to, Slice slice, int depth) {
+    ResolvedPos $from,
+    ResolvedPos $to,
+    Slice slice,
+    int depth,
+  ) {
     final node = $from.node(depth);
     final children = <Node>[];
     final openStart = slice.openStart;
@@ -212,23 +220,26 @@ class ReplaceStep extends Step {
       final leftChild = node.content.child($from.index(depth));
       final leftInner = _closeSide($from, depth + 1, isLeft: true);
       final sliceStart = _openSliceSide(slice.content, openStart - 1, true);
-      children.add(leftChild.copy(Fragment([
-        ...leftInner.children,
-        ...sliceStart.children,
-      ])));
+      children.add(
+        leftChild.copy(
+          Fragment([...leftInner.children, ...sliceStart.children]),
+        ),
+      );
     } else if ($from.depth > depth) {
       final leftChild = node.content.child($from.index(depth));
       children.add(leftChild.copy(_closeSide($from, depth + 1, isLeft: true)));
-      for (var i = 0; i < slice.content.childCount - (openEnd > 0 ? 1 : 0);
-          i++) {
+      for (
+        var i = 0;
+        i < slice.content.childCount - (openEnd > 0 ? 1 : 0);
+        i++
+      ) {
         children.add(slice.content.child(i));
       }
     } else {
       // from is at this depth
       children.addAll(node.content.cut(0, $from.parentOffset).children);
       final sliceStart = openStart > 0 ? 1 : 0;
-      final sliceEnd =
-          slice.content.childCount - (openEnd > 0 ? 1 : 0);
+      final sliceEnd = slice.content.childCount - (openEnd > 0 ? 1 : 0);
       for (var i = sliceStart; i < sliceEnd; i++) {
         children.add(slice.content.child(i));
       }
@@ -237,8 +248,7 @@ class ReplaceStep extends Step {
     // Middle: closed slice children (between open start and open end)
     if ($from.depth > depth && openStart > 0) {
       final sliceStart = 1; // skip the first (open start) child
-      final sliceEnd =
-          slice.content.childCount - (openEnd > 0 ? 1 : 0);
+      final sliceEnd = slice.content.childCount - (openEnd > 0 ? 1 : 0);
       for (var i = sliceStart; i < sliceEnd; i++) {
         children.add(slice.content.child(i));
       }
@@ -248,16 +258,15 @@ class ReplaceStep extends Step {
     if ($to.depth > depth && openEnd > 0) {
       final rightChild = node.content.child($to.index(depth));
       final rightInner = _closeSide($to, depth + 1, isLeft: false);
-      final sliceEnd =
-          _openSliceSide(slice.content, openEnd - 1, false);
-      children.add(rightChild.copy(Fragment([
-        ...sliceEnd.children,
-        ...rightInner.children,
-      ])));
+      final sliceEnd = _openSliceSide(slice.content, openEnd - 1, false);
+      children.add(
+        rightChild.copy(
+          Fragment([...sliceEnd.children, ...rightInner.children]),
+        ),
+      );
     } else if ($to.depth > depth) {
       final rightChild = node.content.child($to.index(depth));
-      children
-          .add(rightChild.copy(_closeSide($to, depth + 1, isLeft: false)));
+      children.add(rightChild.copy(_closeSide($to, depth + 1, isLeft: false)));
     } else {
       // to is at this depth
       if ($from.depth == depth && openEnd > 0) {
@@ -266,7 +275,10 @@ class ReplaceStep extends Step {
         if (lastIdx >= 0) {
           final lastChild = slice.content.child(lastIdx);
           final sliceEnd = _openSliceSide(
-              Fragment.from(lastChild), openEnd - 1, false);
+            Fragment.from(lastChild),
+            openEnd - 1,
+            false,
+          );
           children.addAll(sliceEnd.children);
         }
       }
@@ -319,8 +331,7 @@ class ReplaceStep extends Step {
 
   /// Extracts the "open" side content from a slice.
   /// Descends [openDepth] levels into the first (left) or last (right) child.
-  Fragment _openSliceSide(
-      Fragment content, int openDepth, bool isLeft) {
+  Fragment _openSliceSide(Fragment content, int openDepth, bool isLeft) {
     if (openDepth == 0 || content.isEmpty) return content;
 
     final child = isLeft ? content.children.first : content.children.last;

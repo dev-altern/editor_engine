@@ -18,7 +18,7 @@ class StepMap {
   ///
   /// Ranges are triples: (position, oldSize, newSize).
   /// They must be sorted and non-overlapping.
-  StepMap(this.ranges);
+  StepMap(List<int> ranges) : ranges = List.unmodifiable(ranges);
 
   /// An identity map (no position changes).
   static final StepMap identity = StepMap(const []);

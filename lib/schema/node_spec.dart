@@ -11,10 +11,7 @@ class AttrSpec {
   ///
   /// If [defaultValue] is provided, the attribute is optional.
   /// If null and [required] is true, nodes must always specify this attr.
-  const AttrSpec({
-    this.defaultValue,
-    this.required = false,
-  });
+  const AttrSpec({this.defaultValue, this.required = false});
 
   /// The default value. If null and not required, the attribute is optional.
   final Object? defaultValue;

@@ -116,10 +116,151 @@ void main() {
       );
 
       final step = ReplaceStep(1, 1, Slice(Fragment([TextNode('X')]), 0, 0));
-      expect(
-        () => receiveSteps(state, 0, [step], []),
-        throwsArgumentError,
+      expect(() => receiveSteps(state, 0, [step], []), throwsArgumentError);
+    });
+
+    // ── Structure step transform tests ────────────────────────────────
+
+    test('transformStep SplitStep over ReplaceStep', () {
+      final d = doc([para('Hello world')]);
+      // stepB inserts "XX" at pos 1.
+      final stepB = ReplaceStep(1, 1, Slice(Fragment([TextNode('XX')]), 0, 0));
+      // stepA splits at pos 6 (after "Hello").
+      final stepA = SplitStep(6, depth: 1);
+
+      final transformed = transformStep(stepA, stepB, d);
+      expect(transformed, isA<SplitStep>());
+      final tSplit = transformed as SplitStep;
+      expect(tSplit.pos, 8); // shifted by 2
+      expect(tSplit.depth, 1);
+    });
+
+    test('transformStep JoinStep over ReplaceStep', () {
+      final d = doc([para('Hello'), para('World')]);
+      // stepB inserts at pos 1 in the first paragraph.
+      final stepB = ReplaceStep(1, 1, Slice(Fragment([TextNode('X')]), 0, 0));
+      // stepA joins at the boundary between paragraphs.
+      // In doc [para('Hello'), para('World')], boundary is at pos 8
+      // (1 open + 5 text + 1 close + 1 open = 8).
+      final stepA = JoinStep(8, depth: 1);
+
+      final transformed = transformStep(stepA, stepB, d);
+      expect(transformed, isA<JoinStep>());
+      final tJoin = transformed as JoinStep;
+      expect(tJoin.pos, 9); // shifted by 1
+    });
+
+    test('transformStep WrapStep over ReplaceStep', () {
+      final d = doc([para('Hello world')]);
+      // stepB inserts "X" at pos 1.
+      final stepB = ReplaceStep(1, 1, Slice(Fragment([TextNode('X')]), 0, 0));
+      // stepA wraps the paragraph (pos 0..13).
+      final stepA = WrapStep(0, 13, 'blockquote');
+
+      final transformed = transformStep(stepA, stepB, d);
+      expect(transformed, isA<WrapStep>());
+      final tWrap = transformed as WrapStep;
+      expect(tWrap.from, 0);
+      expect(tWrap.to, 14); // shifted by 1
+    });
+
+    test('transformStep WrapStep collapse returns null', () {
+      final d = doc([para('Hello world')]);
+      // stepB deletes the entire content (pos 0..13).
+      final stepB = ReplaceStep.delete(0, 13);
+      // stepA wraps the same range.
+      final stepA = WrapStep(0, 13, 'blockquote');
+
+      final transformed = transformStep(stepA, stepB, d);
+      expect(transformed, isNull);
+    });
+
+    test('transformStep UnwrapStep over ReplaceStep', () {
+      final d = doc([
+        blockquote([para('Hello')]),
+      ]);
+      // stepB inserts "X" at pos 2 inside the blockquote paragraph.
+      final stepB = ReplaceStep(2, 2, Slice(Fragment([TextNode('X')]), 0, 0));
+      // stepA unwraps the blockquote at pos 0.
+      final stepA = UnwrapStep(0, wrapperNodeSize: 9);
+
+      final transformed = transformStep(stepA, stepB, d);
+      expect(transformed, isA<UnwrapStep>());
+      final tUnwrap = transformed as UnwrapStep;
+      expect(tUnwrap.pos, 0);
+    });
+
+    // ── ReplaceStep overlap cases ────────────────────────────────────
+
+    test('transformStep overlapping replaces — A before B', () {
+      final d = doc([para('Hello world')]);
+      // A deletes positions 1..4 ("Hel")
+      final stepA = ReplaceStep.delete(1, 4);
+      // B deletes positions 3..7 ("lo w")
+      final stepB = ReplaceStep.delete(3, 7);
+
+      final transformed = transformStep(stepA, stepB, d);
+      expect(transformed, isNotNull);
+    });
+
+    test('transformStep overlapping replaces — complete overlap', () {
+      final d = doc([para('Hello world')]);
+      // A deletes positions 1..6
+      final stepA = ReplaceStep.delete(1, 6);
+      // B deletes positions 1..6 (same range)
+      final stepB = ReplaceStep.delete(1, 6);
+
+      // Complete overlap: stepA's range already deleted by stepB.
+      // Should return null or a collapsed no-op.
+      transformStep(stepA, stepB, d);
+    });
+
+    // ── Multi-client scenario ────────────────────────────────────────
+
+    test('Authority handles concurrent inserts from multiple clients', () {
+      final d = doc([para('Hello')]);
+      final authority = Authority(doc: d);
+
+      // Alice inserts at position 1.
+      final stepAlice = ReplaceStep(
+        1,
+        1,
+        Slice(Fragment([TextNode('A')]), 0, 0),
       );
+      authority.receiveSteps(0, [stepAlice], 'alice');
+      expect(authority.version, 1);
+
+      // Bob sends a step based on version 0 (before Alice's change).
+      final stepBob = ReplaceStep(6, 6, Slice(Fragment([TextNode('B')]), 0, 0));
+      final result = authority.receiveSteps(0, [stepBob], 'bob');
+      expect(result, isNotNull);
+      expect(authority.version, 2);
+
+      // Both chars should be in the document.
+      final text = authority.doc.textContent;
+      expect(text, contains('A'));
+      expect(text, contains('B'));
+    });
+
+    test('Authority handles concurrent inserts at same position', () {
+      final d = doc([para('Hello')]);
+      final authority = Authority(doc: d);
+
+      final stepAlice = ReplaceStep(
+        1,
+        1,
+        Slice(Fragment([TextNode('A')]), 0, 0),
+      );
+      authority.receiveSteps(0, [stepAlice], 'alice');
+
+      // Bob also inserts at position 1, but based on v0.
+      final stepBob = ReplaceStep(1, 1, Slice(Fragment([TextNode('B')]), 0, 0));
+      final result = authority.receiveSteps(0, [stepBob], 'bob');
+      expect(result, isNotNull);
+      expect(authority.version, 2);
+      // Both should exist.
+      expect(authority.doc.textContent, contains('A'));
+      expect(authority.doc.textContent, contains('B'));
     });
   });
 }

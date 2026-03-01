@@ -57,15 +57,16 @@ class JsonSerializer {
   }
 
   /// Deserializes any node from JSON.
-  Node deserializeNode(Map<String, dynamic> json) =>
-      _nodeFromJson(json);
+  Node deserializeNode(Map<String, dynamic> json) => _nodeFromJson(json);
 
   DocNode _deserializeDoc(Map<String, dynamic> json) {
     final content = json['content'] as List<dynamic>?;
     if (content == null || content.isEmpty) {
-      return DocNode(content: Fragment([
-        const BlockNode(type: 'paragraph', inlineContent: true),
-      ]));
+      return DocNode(
+        content: Fragment([
+          const BlockNode(type: 'paragraph', inlineContent: true),
+        ]),
+      );
     }
 
     final children = content
@@ -94,7 +95,8 @@ class JsonSerializer {
   TextNode _textFromJson(Map<String, dynamic> json) {
     final text = json['text'] as String;
     final marksList = json['marks'] as List<dynamic>?;
-    final marks = marksList
+    final marks =
+        marksList
             ?.map((m) => Mark.fromJson(m as Map<String, dynamic>))
             .toList() ??
         const [];
@@ -105,14 +107,16 @@ class JsonSerializer {
     final type = json['type'] as String;
     final attrs =
         (json['attrs'] as Map<String, dynamic>?)?.cast<String, Object?>() ??
-            const {};
+        const {};
 
     final contentList = json['content'] as List<dynamic>?;
     final content = contentList != null
-        ? Fragment(contentList
-            .cast<Map<String, dynamic>>()
-            .map(_nodeFromJson)
-            .toList())
+        ? Fragment(
+            contentList
+                .cast<Map<String, dynamic>>()
+                .map(_nodeFromJson)
+                .toList(),
+          )
         : Fragment.empty;
 
     // Use schema to determine node flags if available
@@ -124,7 +128,9 @@ class JsonSerializer {
       content: content,
       isLeaf: spec?.isLeaf ?? content.isEmpty,
       isInline: spec?.inline ?? false,
-      inlineContent: spec?.hasInlineContent ?? false,
+      inlineContent:
+          spec?.hasInlineContent ??
+          (content.isNotEmpty && content.children.first.isInline),
       isAtom: spec?.atom ?? false,
     );
   }

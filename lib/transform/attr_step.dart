@@ -56,11 +56,11 @@ class SetAttrStep extends Step {
 
   @override
   Map<String, dynamic> toJson() => {
-        'stepType': 'setAttr',
-        'pos': pos,
-        'key': key,
-        'value': value,
-      };
+    'stepType': 'setAttr',
+    'pos': pos,
+    'key': key,
+    'value': value,
+  };
 
   DocNode _rebuildToRoot(DocNode doc, ResolvedPos resolved, Node newParent) {
     // Walk back up the tree, rebuilding each ancestor

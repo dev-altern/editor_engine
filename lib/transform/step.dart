@@ -6,10 +6,12 @@ import 'attr_step.dart';
 import 'mark_step.dart';
 import 'replace_step.dart';
 import 'step_map.dart';
+import 'structure_step.dart';
 
 export 'attr_step.dart';
 export 'mark_step.dart';
 export 'replace_step.dart';
+export 'structure_step.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Step — Base class for atomic editing operations
@@ -55,25 +57,46 @@ abstract class Step {
     final stepType = json['stepType'] as String;
     return switch (stepType) {
       'replace' => ReplaceStep(
-          json['from'] as int,
-          json['to'] as int,
-          Slice.fromJson(json['slice'] as Map<String, dynamic>),
-        ),
+        json['from'] as int,
+        json['to'] as int,
+        Slice.fromJson(json['slice'] as Map<String, dynamic>),
+      ),
       'addMark' => AddMarkStep(
-          json['from'] as int,
-          json['to'] as int,
-          Mark.fromJson(json['mark'] as Map<String, dynamic>),
-        ),
+        json['from'] as int,
+        json['to'] as int,
+        Mark.fromJson(json['mark'] as Map<String, dynamic>),
+      ),
       'removeMark' => RemoveMarkStep(
-          json['from'] as int,
-          json['to'] as int,
-          Mark.fromJson(json['mark'] as Map<String, dynamic>),
-        ),
+        json['from'] as int,
+        json['to'] as int,
+        Mark.fromJson(json['mark'] as Map<String, dynamic>),
+      ),
       'setAttr' => SetAttrStep(
-          json['pos'] as int,
-          json['key'] as String,
-          json['value'],
-        ),
+        json['pos'] as int,
+        json['key'] as String,
+        json['value'],
+      ),
+      'split' => SplitStep(
+        json['pos'] as int,
+        depth: json['depth'] as int? ?? 1,
+        typeAfter: json['typeAfter'] as String?,
+        attrsAfter: (json['attrsAfter'] as Map<String, dynamic>?)
+            ?.cast<String, Object?>(),
+      ),
+      'join' => JoinStep(json['pos'] as int, depth: json['depth'] as int? ?? 1),
+      'wrap' => WrapStep(
+        json['from'] as int,
+        json['to'] as int,
+        json['wrapperType'] as String,
+        wrapperAttrs:
+            (json['wrapperAttrs'] as Map<String, dynamic>?)
+                ?.cast<String, Object?>() ??
+            const {},
+      ),
+      'unwrap' => UnwrapStep(
+        json['pos'] as int,
+        wrapperNodeSize: json['wrapperNodeSize'] as int,
+      ),
       _ => throw FormatException('Unknown step type: "$stepType"'),
     };
   }

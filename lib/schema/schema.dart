@@ -44,26 +44,29 @@ class Schema {
   Schema({
     required Map<String, NodeSpec> nodes,
     Map<String, MarkSpec> marks = const {},
-  })  : _nodeSpecs = Map.unmodifiable(nodes),
-        _markSpecs = Map.unmodifiable(marks),
-        _contentExpressions = Map.unmodifiable(
-          nodes.map((k, v) => MapEntry(k, ContentExpression.parse(v.content))),
-        ),
-        _allowedMarksCache = Map.unmodifiable(
-          Map.fromEntries(
-            nodes.entries
-                .where((e) => e.value.marks != '_' && e.value.marks.isNotEmpty)
-                .map((e) => MapEntry(e.key, e.value.marks.split(' ').toSet())),
-          ),
-        ),
-        _excludesCache = Map.unmodifiable(
-          Map.fromEntries(
-            marks.entries
-                .where((e) =>
-                    e.value.excludes != null && e.value.excludes != '_')
-                .map((e) => MapEntry(e.key, e.value.excludes!.split(' ').toSet())),
-          ),
-        );
+  }) : _nodeSpecs = Map.unmodifiable(nodes),
+       _markSpecs = Map.unmodifiable(marks),
+       _contentExpressions = Map.unmodifiable(
+         nodes.map((k, v) => MapEntry(k, ContentExpression.parse(v.content))),
+       ),
+       _allowedMarksCache = Map.unmodifiable(
+         Map.fromEntries(
+           nodes.entries
+               .where((e) => e.value.marks != '_' && e.value.marks.isNotEmpty)
+               .map((e) => MapEntry(e.key, e.value.marks.split(' ').toSet())),
+         ),
+       ),
+       _excludesCache = Map.unmodifiable(
+         Map.fromEntries(
+           marks.entries
+               .where(
+                 (e) => e.value.excludes != null && e.value.excludes != '_',
+               )
+               .map(
+                 (e) => MapEntry(e.key, e.value.excludes!.split(' ').toSet()),
+               ),
+         ),
+       );
 
   final Map<String, NodeSpec> _nodeSpecs;
   final Map<String, MarkSpec> _markSpecs;
@@ -123,12 +126,7 @@ class Schema {
     String widgetType, {
     Map<String, Object?> attrs = const {},
     List<Mark> marks = const [],
-  }) =>
-      InlineWidgetNode(
-        widgetType: widgetType,
-        attrs: attrs,
-        marks: marks,
-      );
+  }) => InlineWidgetNode(widgetType: widgetType, attrs: attrs, marks: marks);
 
   /// Creates a document node with the given [blocks].
   DocNode doc(List<Node> blocks) => DocNode.fromBlocks(blocks);
@@ -176,8 +174,7 @@ class Schema {
   void _validateNode(Node node, List<String> errors) {
     // Validate content expression
     if (!validateContent(node)) {
-      errors.add(
-          'Node "${node.type}" has invalid content: ${node.content}');
+      errors.add('Node "${node.type}" has invalid content: ${node.content}');
     }
 
     // Validate children recursively
@@ -185,7 +182,8 @@ class Schema {
       // Validate marks
       if (!validateMarks(child, node.type)) {
         errors.add(
-            'Node "${child.type}" has marks not allowed in "${node.type}"');
+          'Node "${child.type}" has marks not allowed in "${node.type}"',
+        );
       }
 
       // Validate mark exclusion rules
@@ -196,10 +194,10 @@ class Schema {
           for (var j = i + 1; j < child.marks.length; j++) {
             final other = child.marks[j];
             final excludedSet = _excludesCache[mark.type] ?? const {};
-            if (markSpec!.excludes == '_' ||
-                excludedSet.contains(other.type)) {
+            if (markSpec!.excludes == '_' || excludedSet.contains(other.type)) {
               errors.add(
-                  'Mark "${mark.type}" excludes "${other.type}" on "${child.type}" in "${node.type}"');
+                'Mark "${mark.type}" excludes "${other.type}" on "${child.type}" in "${node.type}"',
+              );
             }
           }
         }
@@ -286,8 +284,7 @@ class Schema {
         if (entry.value.hasDefault) {
           result[entry.key] = entry.value.defaultValue;
         } else if (entry.value.required) {
-          throw ArgumentError(
-              'Required attribute "${entry.key}" not provided');
+          throw ArgumentError('Required attribute "${entry.key}" not provided');
         }
       }
     }
@@ -330,10 +327,7 @@ final Schema basicSchema = Schema(
       marks: '',
       defining: true,
     ),
-    'horizontal_rule': const NodeSpec(
-      name: 'horizontal_rule',
-      group: 'block',
-    ),
+    'horizontal_rule': const NodeSpec(name: 'horizontal_rule', group: 'block'),
     'image': NodeSpec(
       name: 'image',
       group: 'block',
@@ -349,11 +343,7 @@ final Schema basicSchema = Schema(
       group: 'inline',
       inline: true,
     ),
-    'text': const NodeSpec(
-      name: 'text',
-      group: 'inline',
-      inline: true,
-    ),
+    'text': const NodeSpec(name: 'text', group: 'inline', inline: true),
   },
   marks: {
     'bold': const MarkSpec(name: 'bold'),
@@ -410,10 +400,7 @@ final Schema richSchema = Schema(
       content: 'table_row+',
       isolating: true,
     ),
-    'table_row': const NodeSpec(
-      name: 'table_row',
-      content: 'table_cell+',
-    ),
+    'table_row': const NodeSpec(name: 'table_row', content: 'table_cell+'),
     'table_cell': NodeSpec(
       name: 'table_cell',
       content: 'block+',
@@ -438,10 +425,7 @@ final Schema richSchema = Schema(
         'data': const AttrSpec(defaultValue: {}),
       },
     ),
-    'divider': const NodeSpec(
-      name: 'divider',
-      group: 'block',
-    ),
+    'divider': const NodeSpec(name: 'divider', group: 'block'),
   },
   marks: {
     ...basicSchema.markSpecs,

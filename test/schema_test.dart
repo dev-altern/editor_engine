@@ -9,7 +9,10 @@ void main() {
     });
 
     test('creates block nodes', () {
-      final p = basicSchema.block('paragraph', content: [basicSchema.text('Hi')]);
+      final p = basicSchema.block(
+        'paragraph',
+        content: [basicSchema.text('Hi')],
+      );
       expect(p.type, 'paragraph');
       expect(p.inlineContent, true);
     });
@@ -29,7 +32,10 @@ void main() {
     });
 
     test('validates content', () {
-      final p = basicSchema.block('paragraph', content: [basicSchema.text('Hi')]);
+      final p = basicSchema.block(
+        'paragraph',
+        content: [basicSchema.text('Hi')],
+      );
       expect(basicSchema.validateContent(p), true);
     });
 

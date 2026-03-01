@@ -25,17 +25,16 @@ class HistoryPlugin extends Plugin {
   String get key => 'history';
 
   @override
-  Object init(DocNode doc, Selection selection) =>
-      HistoryState(
-        undoStack: const [],
-        redoStack: const [],
-        branches: const [],
-      );
+  Object init(DocNode doc, Selection selection) => HistoryState(
+    undoStack: const [],
+    redoStack: const [],
+    branches: const [],
+  );
 
   @override
-  Object apply(Transaction tr, Object? state,
-      {Selection? selectionBefore}) {
-    final history = state as HistoryState? ??
+  Object apply(Transaction tr, Object? state, {Selection? selectionBefore}) {
+    final history =
+        state as HistoryState? ??
         HistoryState(
           undoStack: const [],
           redoStack: const [],

@@ -61,8 +61,14 @@ class ContentExpression {
 
       // Handle parenthesized choice groups: (a|b)+
       if (name.startsWith('(') && name.endsWith(')')) {
-        final choices = name.substring(1, name.length - 1).split('|').map((s) => s.trim()).toList();
-        elements.add(ContentElement(choices.first, quantifier, choices: choices));
+        final choices = name
+            .substring(1, name.length - 1)
+            .split('|')
+            .map((s) => s.trim())
+            .toList();
+        elements.add(
+          ContentElement(choices.first, quantifier, choices: choices),
+        );
       } else {
         elements.add(ContentElement(name, quantifier));
       }
@@ -82,15 +88,15 @@ class ContentExpression {
 
   /// Whether this expression allows inline content.
   bool get allowsInline => elements.any((e) {
-        final names = e.isChoice ? e.choices : [e.name];
-        return names.any((n) => n == 'inline' || n == 'text');
-      });
+    final names = e.isChoice ? e.choices : [e.name];
+    return names.any((n) => n == 'inline' || n == 'text');
+  });
 
   /// Whether this expression allows block content.
   bool get allowsBlock => elements.any((e) {
-        final names = e.isChoice ? e.choices : [e.name];
-        return names.any((n) => n == 'block');
-      });
+    final names = e.isChoice ? e.choices : [e.name];
+    return names.any((n) => n == 'block');
+  });
 
   /// Validates that [children] satisfy this expression.
   ///
@@ -147,8 +153,9 @@ class ContentExpression {
   }
 
   @override
-  String toString() =>
-      elements.isEmpty ? '(empty)' : elements.map((e) => e.toString()).join(' ');
+  String toString() => elements.isEmpty
+      ? '(empty)'
+      : elements.map((e) => e.toString()).join(' ');
 }
 
 /// A single element in a content expression.

@@ -144,10 +144,8 @@ void main() {
   });
 
   group('History', () {
-    EditorState createState() => EditorState.create(
-          schema: basicSchema,
-          plugins: [HistoryPlugin()],
-        );
+    EditorState createState() =>
+        EditorState.create(schema: basicSchema, plugins: [HistoryPlugin()]);
 
     test('undo reverts insert', () {
       var state = createState();
@@ -240,7 +238,9 @@ void main() {
 
     test('InlineDecoration maps through insertion before range', () {
       final d = InlineDecoration(10, 20, {'class': 'hi'});
-      final mapping = Mapping.from([StepMap([5, 0, 3])]);
+      final mapping = Mapping.from([
+        StepMap([5, 0, 3]),
+      ]);
       final mapped = d.mapThrough(mapping) as InlineDecoration;
       expect(mapped.from, 13);
       expect(mapped.to, 23);
@@ -248,14 +248,18 @@ void main() {
 
     test('InlineDecoration maps through deletion of entire range', () {
       final d = InlineDecoration(5, 10, {'class': 'hi'});
-      final mapping = Mapping.from([StepMap([3, 10, 0])]);
+      final mapping = Mapping.from([
+        StepMap([3, 10, 0]),
+      ]);
       final mapped = d.mapThrough(mapping);
       expect(mapped, isNull);
     });
 
     test('InlineDecoration does not expand on boundary insertion', () {
       final d = InlineDecoration(5, 10, {'class': 'hi'});
-      final mapping = Mapping.from([StepMap([5, 0, 3])]);
+      final mapping = Mapping.from([
+        StepMap([5, 0, 3]),
+      ]);
       final mapped = d.mapThrough(mapping) as InlineDecoration;
       expect(mapped.from, 8);
       expect(mapped.to, 13);
@@ -263,14 +267,18 @@ void main() {
 
     test('NodeDecoration maps through insertion', () {
       final d = NodeDecoration(5, {'class': 'sel'});
-      final mapping = Mapping.from([StepMap([3, 0, 2])]);
+      final mapping = Mapping.from([
+        StepMap([3, 0, 2]),
+      ]);
       final mapped = d.mapThrough(mapping) as NodeDecoration;
       expect(mapped.pos, 7);
     });
 
     test('NodeDecoration removed when position deleted', () {
       final d = NodeDecoration(5, {'class': 'sel'});
-      final mapping = Mapping.from([StepMap([4, 3, 0])]);
+      final mapping = Mapping.from([
+        StepMap([4, 3, 0]),
+      ]);
       final mapped = d.mapThrough(mapping);
       expect(mapped, isNull);
     });
@@ -278,7 +286,9 @@ void main() {
     test('WidgetDecoration side affects mapping direction', () {
       final before = WidgetDecoration(5, side: false);
       final after = WidgetDecoration(5, side: true);
-      final mapping = Mapping.from([StepMap([5, 0, 3])]);
+      final mapping = Mapping.from([
+        StepMap([5, 0, 3]),
+      ]);
 
       final mappedBefore = before.mapThrough(mapping) as WidgetDecoration;
       final mappedAfter = after.mapThrough(mapping) as WidgetDecoration;
@@ -289,10 +299,12 @@ void main() {
 
     test('DecorationSet add/remove/find', () {
       var set = DecorationSet.empty;
-      final d1 = InlineDecoration(0, 10, {'class': 'a'},
-          spec: DecorationSpec(type: 'search'));
-      final d2 = InlineDecoration(20, 30, {'class': 'b'},
-          spec: DecorationSpec(type: 'lint'));
+      final d1 = InlineDecoration(0, 10, {
+        'class': 'a',
+      }, spec: DecorationSpec(type: 'search'));
+      final d2 = InlineDecoration(20, 30, {
+        'class': 'b',
+      }, spec: DecorationSpec(type: 'lint'));
       final d3 = NodeDecoration(5, {'class': 'c'});
 
       set = set.add(d1).add(d2).add(d3);
@@ -316,7 +328,9 @@ void main() {
       set = set.add(InlineDecoration(5, 10, {'class': 'a'}));
       set = set.add(NodeDecoration(15, {'class': 'b'}));
 
-      final mapping = Mapping.from([StepMap([0, 0, 3])]);
+      final mapping = Mapping.from([
+        StepMap([0, 0, 3]),
+      ]);
       final mapped = set.map(mapping);
 
       final inline = mapped.findInline(0, 100).first;
@@ -346,8 +360,7 @@ void main() {
         pluginStates: {...state.pluginStates, 'decorations': decos},
       );
 
-      final tr = Transaction(stateWithDeco.doc)
-        ..insertText(1, 'XX');
+      final tr = Transaction(stateWithDeco.doc)..insertText(1, 'XX');
       final newState = stateWithDeco.apply(tr);
 
       final newDecos = newState.pluginState<DecorationSet>('decorations')!;

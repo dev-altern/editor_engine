@@ -96,7 +96,10 @@ void main() {
     });
 
     test('getMap returns correct StepMap', () {
-      final step = ReplaceStep.insert(5, Slice(Fragment([TextNode('Hi')]), 0, 0));
+      final step = ReplaceStep.insert(
+        5,
+        Slice(Fragment([TextNode('Hi')]), 0, 0),
+      );
       final map = step.getMap();
       expect(map.ranges, [5, 0, 2]);
     });
@@ -151,7 +154,9 @@ void main() {
       expect(result.isOk, true);
 
       final p = result.doc!.content.child(0);
-      final widget = p.content.children.firstWhere((n) => n is InlineWidgetNode);
+      final widget = p.content.children.firstWhere(
+        (n) => n is InlineWidgetNode,
+      );
       expect(widget.marks.hasMark('bold'), true);
     });
 
@@ -169,7 +174,9 @@ void main() {
         BlockNode(
           type: 'paragraph',
           inlineContent: true,
-          content: Fragment([TextNode('Hello', marks: [Mark.bold])]),
+          content: Fragment([
+            TextNode('Hello', marks: [Mark.bold]),
+          ]),
         ),
       ]);
       final step = RemoveMarkStep(1, 6, Mark.bold);
@@ -347,7 +354,11 @@ void main() {
 
   group('Step.fromJson', () {
     test('ReplaceStep insertion round-trips', () {
-      final step = ReplaceStep(5, 5, Slice(Fragment([TextNode('hello')]), 0, 0));
+      final step = ReplaceStep(
+        5,
+        5,
+        Slice(Fragment([TextNode('hello')]), 0, 0),
+      );
       final json = step.toJson();
       final restored = Step.fromJson(json) as ReplaceStep;
       expect(restored.from, 5);
@@ -394,7 +405,11 @@ void main() {
     });
 
     test('AddMarkStep with attrs round-trips', () {
-      final step = AddMarkStep(0, 5, Mark.link('https://example.com', title: 'Example'));
+      final step = AddMarkStep(
+        0,
+        5,
+        Mark.link('https://example.com', title: 'Example'),
+      );
       final json = step.toJson();
       final restored = Step.fromJson(json) as AddMarkStep;
       expect(restored.from, 0);
@@ -440,7 +455,11 @@ void main() {
 
     test('ReplaceStep apply after round-trip produces same result', () {
       final d = doc([para('Hello world')]);
-      final step = ReplaceStep(1, 6, Slice(Fragment([TextNode('Goodbye')]), 0, 0));
+      final step = ReplaceStep(
+        1,
+        6,
+        Slice(Fragment([TextNode('Goodbye')]), 0, 0),
+      );
 
       final resultBefore = step.apply(d);
       final restored = Step.fromJson(step.toJson()) as ReplaceStep;

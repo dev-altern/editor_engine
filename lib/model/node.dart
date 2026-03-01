@@ -149,14 +149,13 @@ abstract class Node {
       final before = pos;
       if (!child.isLeaf) {
         // Non-leaf: skip open token
-        if (!callback(child, before, parent)) return -1;
-        final result =
-            child._walkDescendants(callback, pos + 1, child);
+        if (!callback(child, before, this)) return -1;
+        final result = child._walkDescendants(callback, pos + 1, child);
         if (result < 0) return -1;
         pos = result;
         pos++; // close token
       } else {
-        if (!callback(child, before, parent)) return -1;
+        if (!callback(child, before, this)) return -1;
         pos += child.nodeSize;
       }
     }
@@ -206,11 +205,11 @@ abstract class Node {
 
   @override
   int get hashCode => Object.hash(
-        type,
-        const DeepCollectionEquality().hash(attrs),
-        const ListEquality<Mark>().hash(marks),
-        content,
-      );
+    type,
+    const DeepCollectionEquality().hash(attrs),
+    const ListEquality<Mark>().hash(marks),
+    content,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -225,10 +224,7 @@ abstract class Node {
 class TextNode extends Node {
   /// Creates a text node with the given [text] and optional [marks].
   const TextNode(this.text, {super.marks = const []})
-      : super(
-          type: 'text',
-          content: Fragment.empty,
-        );
+    : super(type: 'text', content: Fragment.empty);
 
   /// The text content.
   final String text;
@@ -276,19 +272,19 @@ class TextNode extends Node {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'text',
-        'text': text,
-        if (marks.isNotEmpty) 'marks': marks.map((m) => m.toJson()).toList(),
-      };
+    'type': 'text',
+    'text': text,
+    if (marks.isNotEmpty) 'marks': marks.map((m) => m.toJson()).toList(),
+  };
 
   factory TextNode.fromJson(Map<String, dynamic> json) => TextNode(
-        json['text'] as String,
-        marks: (json['marks'] as List<dynamic>?)
-                ?.map(
-                    (m) => Mark.fromJson(m as Map<String, dynamic>))
-                .toList() ??
-            const [],
-      );
+    json['text'] as String,
+    marks:
+        (json['marks'] as List<dynamic>?)
+            ?.map((m) => Mark.fromJson(m as Map<String, dynamic>))
+            .toList() ??
+        const [],
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -302,10 +298,8 @@ class TextNode extends Node {
 
   @override
   String toString() {
-    final marksStr =
-        marks.isEmpty ? '' : ', marks: [${marks.join(', ')}]';
-    final display =
-        text.length > 40 ? '${text.substring(0, 37)}...' : text;
+    final marksStr = marks.isEmpty ? '' : ', marks: [${marks.join(', ')}]';
+    final display = text.length > 40 ? '${text.substring(0, 37)}...' : text;
     return 'TextNode("$display"$marksStr)';
   }
 }
@@ -333,10 +327,10 @@ class BlockNode extends Node {
     bool isInline = false,
     bool inlineContent = false,
     bool isAtom = false,
-  })  : _isLeaf = isLeaf,
-        _isInline = isInline,
-        _inlineContent = inlineContent,
-        _isAtom = isAtom;
+  }) : _isLeaf = isLeaf,
+       _isInline = isInline,
+       _inlineContent = inlineContent,
+       _isAtom = isAtom;
 
   final bool _isLeaf;
   final bool _isInline;
@@ -360,55 +354,53 @@ class BlockNode extends Node {
 
   @override
   Node copy(Fragment newContent) => BlockNode(
-        type: type,
-        attrs: attrs,
-        content: newContent,
-        isLeaf: _isLeaf,
-        isInline: _isInline,
-        inlineContent: _inlineContent,
-        isAtom: _isAtom,
-      );
+    type: type,
+    attrs: attrs,
+    content: newContent,
+    isLeaf: _isLeaf,
+    isInline: _isInline,
+    inlineContent: _inlineContent,
+    isAtom: _isAtom,
+  );
 
   @override
   Node withAttrs(Map<String, Object?> newAttrs) => BlockNode(
-        type: type,
-        attrs: newAttrs,
-        content: content,
-        isLeaf: _isLeaf,
-        isInline: _isInline,
-        inlineContent: _inlineContent,
-        isAtom: _isAtom,
-      );
+    type: type,
+    attrs: newAttrs,
+    content: content,
+    isLeaf: _isLeaf,
+    isInline: _isInline,
+    inlineContent: _inlineContent,
+    isAtom: _isAtom,
+  );
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': type,
-        if (attrs.isNotEmpty) 'attrs': attrs,
-        if (_isLeaf) 'isLeaf': true,
-        if (_isAtom) 'isAtom': true,
-        if (_isInline) 'isInline': true,
-        if (content.isNotEmpty)
-          'content': content.toJson(),
-      };
+    'type': type,
+    if (attrs.isNotEmpty) 'attrs': attrs,
+    if (_isLeaf) 'isLeaf': true,
+    if (_isAtom) 'isAtom': true,
+    if (_isInline) 'isInline': true,
+    if (content.isNotEmpty) 'content': content.toJson(),
+  };
 
   factory BlockNode.fromJson(Map<String, dynamic> json) {
     final type = json['type'] as String;
     final attrs =
         (json['attrs'] as Map<String, dynamic>?)?.cast<String, Object?>() ??
-            const {};
+        const {};
     final content = json['content'] != null
         ? Fragment.fromJson(json['content'] as List<dynamic>)
         : Fragment.empty;
 
     // Infer inlineContent from actual children
-    final hasInline =
-        content.isNotEmpty && content.children.first.isInline;
+    final hasInline = content.isNotEmpty && content.children.first.isInline;
 
     return BlockNode(
       type: type,
       attrs: attrs,
       content: content,
-      isLeaf: json['isLeaf'] as bool? ?? content.isEmpty,
+      isLeaf: json['isLeaf'] as bool? ?? false,
       isAtom: json['isAtom'] as bool? ?? false,
       isInline: json['isInline'] as bool? ?? false,
       inlineContent: hasInline,
@@ -418,8 +410,9 @@ class BlockNode extends Node {
   @override
   String toString() {
     final attrStr = attrs.isEmpty ? '' : ', attrs: $attrs';
-    final contentStr =
-        content.isEmpty ? '' : ', ${content.childCount} children';
+    final contentStr = content.isEmpty
+        ? ''
+        : ', ${content.childCount} children';
     return 'BlockNode($type$attrStr$contentStr)';
   }
 }
@@ -445,10 +438,10 @@ class InlineWidgetNode extends Node {
     Map<String, Object?> attrs = const {},
     super.marks = const [],
   }) : super(
-          type: 'inline_widget',
-          attrs: {'widgetType': widgetType, ...attrs},
-          content: Fragment.empty,
-        );
+         type: 'inline_widget',
+         attrs: {'widgetType': widgetType, ...attrs},
+         content: Fragment.empty,
+       );
 
   /// The widget type name (e.g., "mention", "date", "emoji").
   String get widgetType => attrs['widgetType'] as String;
@@ -470,34 +463,30 @@ class InlineWidgetNode extends Node {
 
   @override
   Node withAttrs(Map<String, Object?> newAttrs) => InlineWidgetNode(
-        widgetType: newAttrs['widgetType'] as String? ?? widgetType,
-        attrs: newAttrs,
-        marks: marks,
-      );
+    widgetType: newAttrs['widgetType'] as String? ?? widgetType,
+    attrs: newAttrs,
+    marks: marks,
+  );
 
   /// Returns a new inline widget with the given [marks].
-  InlineWidgetNode withMarks(List<Mark> newMarks) => InlineWidgetNode(
-        widgetType: widgetType,
-        attrs: attrs,
-        marks: newMarks,
-      );
+  InlineWidgetNode withMarks(List<Mark> newMarks) =>
+      InlineWidgetNode(widgetType: widgetType, attrs: attrs, marks: newMarks);
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'inline_widget',
-        'attrs': attrs,
-        if (marks.isNotEmpty) 'marks': marks.map((m) => m.toJson()).toList(),
-      };
+    'type': 'inline_widget',
+    'attrs': attrs,
+    if (marks.isNotEmpty) 'marks': marks.map((m) => m.toJson()).toList(),
+  };
 
   factory InlineWidgetNode.fromJson(Map<String, dynamic> json) =>
       InlineWidgetNode(
         widgetType:
             (json['attrs'] as Map<String, dynamic>)['widgetType'] as String,
-        attrs:
-            (json['attrs'] as Map<String, dynamic>).cast<String, Object?>(),
-        marks: (json['marks'] as List<dynamic>?)
-                ?.map(
-                    (m) => Mark.fromJson(m as Map<String, dynamic>))
+        attrs: (json['attrs'] as Map<String, dynamic>).cast<String, Object?>(),
+        marks:
+            (json['marks'] as List<dynamic>?)
+                ?.map((m) => Mark.fromJson(m as Map<String, dynamic>))
                 .toList() ??
             const [],
       );
@@ -516,8 +505,7 @@ class InlineWidgetNode extends Node {
 /// The DocNode itself is not rendered — it exists only as a container.
 class DocNode extends Node {
   /// Creates a document node with the given block children.
-  const DocNode({super.content = Fragment.empty})
-      : super(type: 'doc');
+  const DocNode({super.content = Fragment.empty}) : super(type: 'doc');
 
   /// Creates a document from a list of block nodes.
   factory DocNode.fromBlocks(List<Node> blocks) =>
@@ -537,15 +525,15 @@ class DocNode extends Node {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': 'doc',
-        if (content.isNotEmpty) 'content': content.toJson(),
-      };
+    'type': 'doc',
+    if (content.isNotEmpty) 'content': content.toJson(),
+  };
 
   factory DocNode.fromJson(Map<String, dynamic> json) => DocNode(
-        content: json['content'] != null
-            ? Fragment.fromJson(json['content'] as List<dynamic>)
-            : Fragment.empty,
-      );
+    content: json['content'] != null
+        ? Fragment.fromJson(json['content'] as List<dynamic>)
+        : Fragment.empty,
+  );
 
   @override
   String toString() => 'DocNode(${content.childCount} blocks)';

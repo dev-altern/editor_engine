@@ -43,6 +43,8 @@ library;
 export 'model/node.dart';
 export 'model/fragment.dart';
 export 'model/mark.dart';
+export 'model/slice.dart';
+export 'model/resolved_pos.dart';
 
 // Schema
 export 'schema/schema.dart';
@@ -62,10 +64,18 @@ export 'state/selection.dart';
 // Decorations
 export 'state/decoration.dart';
 
+// Markers
+export 'markers/marker.dart';
+export 'markers/marker_collection.dart';
+export 'markers/interval_tree.dart';
+
 // Serialization
 export 'serialization/json_serializer.dart';
 export 'serialization/html_serializer.dart';
 export 'serialization/markdown_serializer.dart';
+export 'serialization/delta_serializer.dart';
 
 // Collaborative editing
 export 'collab/collab.dart';
+export 'collab/awareness.dart';
+export 'collab/crdt_bridge.dart';

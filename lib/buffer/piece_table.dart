@@ -68,8 +68,12 @@ class PieceTable {
     }
 
     // Build tree with single piece referencing original buffer
-    final piece = _Piece(_BufferType.original, 0, initialText.length,
-        _countLineFeeds(initialText));
+    final piece = _Piece(
+      _BufferType.original,
+      0,
+      initialText.length,
+      _countLineFeeds(initialText),
+    );
     final node = _RBNode(piece)
       ..color = _Color.black
       ..sizeLeft = 0
@@ -94,10 +98,10 @@ class PieceTable {
     required this.lineCount,
     required bool useSimple,
     required String? simpleText,
-  })  : _root = root,
-        _useSimple = useSimple,
-        _simpleText = simpleText,
-        _editCount = 0;
+  }) : _root = root,
+       _useSimple = useSimple,
+       _simpleText = simpleText,
+       _editCount = 0;
 
   static const _simpleThreshold = 256;
   static const _editThreshold = 8;
@@ -176,9 +180,13 @@ class PieceTable {
     _editCount++;
     _textCache = null;
 
-    if (_useSimple && _editCount < _editThreshold && length + text.length < _simpleThreshold) {
+    if (_useSimple &&
+        _editCount < _editThreshold &&
+        length + text.length < _simpleThreshold) {
       _simpleText =
-          _simpleText!.substring(0, offset) + text + _simpleText!.substring(offset);
+          _simpleText!.substring(0, offset) +
+          text +
+          _simpleText!.substring(offset);
       length += text.length;
       lineCount += _countLines(text);
       return;
@@ -192,7 +200,11 @@ class PieceTable {
     addBuffer.write(text);
     _addBufferCache = null; // Invalidate cache
     final newPiece = _Piece(
-        _BufferType.add, addStart, text.length, _countLineFeeds(text));
+      _BufferType.add,
+      addStart,
+      text.length,
+      _countLineFeeds(text),
+    );
 
     if (_root == _RBNode.sentinel) {
       _root = _RBNode(newPiece)..color = _Color.black;
@@ -211,14 +223,19 @@ class PieceTable {
     if (deleteLength == 0) return;
     RangeError.checkValueInInterval(offset, 0, length, 'offset');
     RangeError.checkValueInInterval(
-        offset + deleteLength, offset, length, 'offset + deleteLength');
+      offset + deleteLength,
+      offset,
+      length,
+      'offset + deleteLength',
+    );
     _editCount++;
     _textCache = null;
 
     if (_useSimple && _editCount < _editThreshold) {
       final deleted = _simpleText!.substring(offset, offset + deleteLength);
       _simpleText =
-          _simpleText!.substring(0, offset) + _simpleText!.substring(offset + deleteLength);
+          _simpleText!.substring(0, offset) +
+          _simpleText!.substring(offset + deleteLength);
       length -= deleteLength;
       lineCount -= _countLines(deleted);
       return;
@@ -269,13 +286,14 @@ class PieceTable {
 
   /// Creates a snapshot of the current state for undo.
   PieceTableSnapshot snapshot() => PieceTableSnapshot._(
-        addBufferLength: addBuffer.length,
-        treeSnapshot: _useSimple ? null : _cloneTree(_root),
-        simpleText: _useSimple ? _simpleText : null,
-        length: length,
-        lineCount: lineCount,
-        useSimple: _useSimple,
-      );
+    addBufferLength: addBuffer.length,
+    treeSnapshot: _useSimple ? null : _cloneTree(_root),
+    simpleText: _useSimple ? _simpleText : null,
+    length: length,
+    lineCount: lineCount,
+    useSimple: _useSimple,
+    editCount: _editCount,
+  );
 
   /// Restores from a snapshot.
   void restore(PieceTableSnapshot snap) {
@@ -283,6 +301,7 @@ class PieceTable {
     _simpleText = snap.simpleText;
     length = snap.length;
     lineCount = snap.lineCount;
+    _editCount = snap.editCount;
     _textCache = null;
     if (!_useSimple && snap.treeSnapshot != null) {
       _root = snap.treeSnapshot!;
@@ -306,14 +325,28 @@ class PieceTable {
     }
 
     // Check if text is in original or needs to go in add buffer
-    if (text == originalBuffer.substring(0, math.min(text.length, originalBuffer.length)) &&
+    if (text ==
+            originalBuffer.substring(
+              0,
+              math.min(text.length, originalBuffer.length),
+            ) &&
         text.length <= originalBuffer.length) {
-      final piece = _Piece(_BufferType.original, 0, text.length, _countLineFeeds(text));
+      final piece = _Piece(
+        _BufferType.original,
+        0,
+        text.length,
+        _countLineFeeds(text),
+      );
       _root = _RBNode(piece)..color = _Color.black;
     } else {
       final addStart = addBuffer.length;
       addBuffer.write(text);
-      final piece = _Piece(_BufferType.add, addStart, text.length, _countLineFeeds(text));
+      final piece = _Piece(
+        _BufferType.add,
+        addStart,
+        text.length,
+        _countLineFeeds(text),
+      );
       _root = _RBNode(piece)..color = _Color.black;
     }
   }
@@ -325,7 +358,9 @@ class PieceTable {
     final result = _findNodeAtOffset(offset);
     if (result == null) {
       // Append at end
-      final node = _RBNode(piece)..sizeLeft = 0..lfLeft = 0;
+      final node = _RBNode(piece)
+        ..sizeLeft = 0
+        ..lfLeft = 0;
       _appendNode(node);
       return;
     }
@@ -334,11 +369,15 @@ class PieceTable {
 
     if (localOffset == 0) {
       // Insert before this node
-      final node = _RBNode(piece)..sizeLeft = 0..lfLeft = 0;
+      final node = _RBNode(piece)
+        ..sizeLeft = 0
+        ..lfLeft = 0;
       _insertBefore(targetNode, node);
     } else if (localOffset == targetNode.piece.length) {
       // Insert after this node
-      final node = _RBNode(piece)..sizeLeft = 0..lfLeft = 0;
+      final node = _RBNode(piece)
+        ..sizeLeft = 0
+        ..lfLeft = 0;
       _insertAfter(targetNode, node);
     } else {
       // Split the target node
@@ -361,10 +400,14 @@ class PieceTable {
       _updateMetadata(targetNode);
 
       // Insert new piece and right piece after
-      final newNode = _RBNode(piece)..sizeLeft = 0..lfLeft = 0;
+      final newNode = _RBNode(piece)
+        ..sizeLeft = 0
+        ..lfLeft = 0;
       _insertAfter(targetNode, newNode);
 
-      final rightNode = _RBNode(rightPiece)..sizeLeft = 0..lfLeft = 0;
+      final rightNode = _RBNode(rightPiece)
+        ..sizeLeft = 0
+        ..lfLeft = 0;
       _insertAfter(newNode, rightNode);
     }
   }
@@ -413,16 +456,16 @@ class PieceTable {
         remaining -= available;
       } else {
         // Delete middle of piece — split into two
-        final deletedText =
-            _pieceText(piece).substring(localOffset, localOffset + remaining);
+        final deletedText = _pieceText(
+          piece,
+        ).substring(localOffset, localOffset + remaining);
         linesRemoved += _countLines(deletedText);
 
         final rightPiece = _Piece(
           piece.bufferType,
           piece.start + localOffset + remaining,
           piece.length - localOffset - remaining,
-          _countLineFeedsInRange(
-              piece, localOffset + remaining, piece.length),
+          _countLineFeedsInRange(piece, localOffset + remaining, piece.length),
         );
 
         targetNode.piece = _Piece(
@@ -433,7 +476,9 @@ class PieceTable {
         );
         _updateMetadata(targetNode);
 
-        final rightNode = _RBNode(rightPiece)..sizeLeft = 0..lfLeft = 0;
+        final rightNode = _RBNode(rightPiece)
+          ..sizeLeft = 0
+          ..lfLeft = 0;
         _insertAfter(targetNode, rightNode);
 
         remaining = 0;
@@ -455,10 +500,7 @@ class PieceTable {
         accum += leftSize + node.piece.length;
         node = node.right;
       } else {
-        return (
-          targetNode: node,
-          localOffset: offset - accum - leftSize,
-        );
+        return (targetNode: node, localOffset: offset - accum - leftSize);
       }
     }
 
@@ -779,12 +821,13 @@ class PieceTable {
   void _updateMetadata(_RBNode node) {
     if (node == _RBNode.sentinel) return;
     final leftSize = node.left == _RBNode.sentinel ? 0 : node.left.subtreeSize;
-    final rightSize =
-        node.right == _RBNode.sentinel ? 0 : node.right.subtreeSize;
-    final leftLf =
-        node.left == _RBNode.sentinel ? 0 : node.left.subtreeLfCount;
-    final rightLf =
-        node.right == _RBNode.sentinel ? 0 : node.right.subtreeLfCount;
+    final rightSize = node.right == _RBNode.sentinel
+        ? 0
+        : node.right.subtreeSize;
+    final leftLf = node.left == _RBNode.sentinel ? 0 : node.left.subtreeLfCount;
+    final rightLf = node.right == _RBNode.sentinel
+        ? 0
+        : node.right.subtreeLfCount;
     node.sizeLeft = leftSize;
     node.lfLeft = leftLf;
     node.subtreeSize = leftSize + node.piece.length + rightSize;
@@ -871,16 +914,16 @@ class PieceTable {
     }
   }
 
-  void _inorderVisit(
+  bool _inorderVisit(
     _RBNode node,
     int offset,
     bool Function(_RBNode node, int offset) callback,
   ) {
-    if (node == _RBNode.sentinel) return;
-    _inorderVisit(node.left, offset, callback);
+    if (node == _RBNode.sentinel) return true;
+    if (!_inorderVisit(node.left, offset, callback)) return false;
     final nodeOff = offset + node.sizeLeft;
-    if (!callback(node, nodeOff)) return;
-    _inorderVisit(node.right, nodeOff + node.piece.length, callback);
+    if (!callback(node, nodeOff)) return false;
+    return _inorderVisit(node.right, nodeOff + node.piece.length, callback);
   }
 
   int _nodeOffset(_RBNode target) {
@@ -958,6 +1001,7 @@ class PieceTableSnapshot {
     required this.length,
     required this.lineCount,
     required this.useSimple,
+    required this.editCount,
   });
 
   final int addBufferLength;
@@ -967,6 +1011,7 @@ class PieceTableSnapshot {
   final int length;
   final int lineCount;
   final bool useSimple;
+  final int editCount;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

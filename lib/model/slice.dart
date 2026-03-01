@@ -41,16 +41,16 @@ class Slice {
 
   /// Serializes to JSON.
   Map<String, dynamic> toJson() => {
-        'content': content.toJson(),
-        if (openStart > 0) 'openStart': openStart,
-        if (openEnd > 0) 'openEnd': openEnd,
-      };
+    'content': content.toJson(),
+    if (openStart > 0) 'openStart': openStart,
+    if (openEnd > 0) 'openEnd': openEnd,
+  };
 
   factory Slice.fromJson(Map<String, dynamic> json) => Slice(
-        Fragment.fromJson(json['content'] as List<dynamic>),
-        json['openStart'] as int? ?? 0,
-        json['openEnd'] as int? ?? 0,
-      );
+    Fragment.fromJson(json['content'] as List<dynamic>),
+    json['openStart'] as int? ?? 0,
+    json['openEnd'] as int? ?? 0,
+  );
 
   @override
   bool operator ==(Object other) =>

@@ -34,7 +34,10 @@ void main() {
     });
 
     test('InlineWidgetNode has nodeSize 1', () {
-      final widget = InlineWidgetNode(widgetType: 'mention', attrs: {'userId': '123'});
+      final widget = InlineWidgetNode(
+        widgetType: 'mention',
+        attrs: {'userId': '123'},
+      );
       expect(widget.nodeSize, 1);
       expect(widget.isInline, true);
       expect(widget.isAtom, true);
@@ -108,7 +111,10 @@ void main() {
     });
 
     test('fromJson round-trips', () {
-      final frag = Fragment([TextNode('Hello'), TextNode('World', marks: [Mark.bold])]);
+      final frag = Fragment([
+        TextNode('Hello'),
+        TextNode('World', marks: [Mark.bold]),
+      ]);
       final json = frag.toJson();
       final restored = Fragment.fromJson(json);
       expect(restored, equals(frag));
@@ -150,7 +156,10 @@ void main() {
     });
 
     test('sameMarks compares correctly', () {
-      expect([Mark.bold, Mark.italic].sameMarks([Mark.bold, Mark.italic]), true);
+      expect(
+        [Mark.bold, Mark.italic].sameMarks([Mark.bold, Mark.italic]),
+        true,
+      );
       expect([Mark.bold].sameMarks([Mark.italic]), false);
     });
 
@@ -180,8 +189,8 @@ void main() {
     test('resolves between paragraphs', () {
       final d = doc([para('AB'), para('CD')]);
       final pos = d.resolve(4);
-      expect(pos.depth, 1);
-      expect(pos.parent.type, 'paragraph');
+      expect(pos.depth, 0);
+      expect(pos.parentIndex, 1);
     });
 
     test('sharedDepth works', () {

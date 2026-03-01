@@ -45,7 +45,8 @@ class EditorState {
     Selection? selection,
     List<Plugin> plugins = const [],
   }) {
-    final document = doc ??
+    final document =
+        doc ??
         DocNode.fromBlocks([
           schema.block('paragraph', content: [schema.text('')]),
         ]);
@@ -112,8 +113,7 @@ class EditorState {
     final newPluginStates = <String, Object>{};
     for (final plugin in plugins) {
       final oldState = pluginStates[plugin.key];
-      final newState =
-          plugin.apply(tr, oldState, selectionBefore: selBefore);
+      final newState = plugin.apply(tr, oldState, selectionBefore: selBefore);
       if (newState != null) {
         newPluginStates[plugin.key] = newState;
       }

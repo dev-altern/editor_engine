@@ -27,6 +27,7 @@ class CollabState {
     required this.clientId,
     this.unconfirmedSteps = const [],
     this.unconfirmedMaps = const [],
+    this.baseDoc,
   });
 
   /// The last confirmed server version.
@@ -55,6 +56,12 @@ class CollabState {
   /// [unconfirmedSteps]. Used for position mapping during rebase.
   final List<StepMap> unconfirmedMaps;
 
+  /// The document at the confirmed version (before unconfirmed steps).
+  ///
+  /// Stored so that unconfirmed steps can be correctly undone during
+  /// rebase without needing step inversion (which requires pre-step docs).
+  final DocNode? baseDoc;
+
   /// Number of unconfirmed steps pending.
   int get pendingCount => unconfirmedSteps.length;
 
@@ -67,13 +74,14 @@ class CollabState {
     String? clientId,
     List<Step>? unconfirmedSteps,
     List<StepMap>? unconfirmedMaps,
-  }) =>
-      CollabState(
-        version: version ?? this.version,
-        clientId: clientId ?? this.clientId,
-        unconfirmedSteps: unconfirmedSteps ?? this.unconfirmedSteps,
-        unconfirmedMaps: unconfirmedMaps ?? this.unconfirmedMaps,
-      );
+    DocNode? baseDoc,
+  }) => CollabState(
+    version: version ?? this.version,
+    clientId: clientId ?? this.clientId,
+    unconfirmedSteps: unconfirmedSteps ?? this.unconfirmedSteps,
+    unconfirmedMaps: unconfirmedMaps ?? this.unconfirmedMaps,
+    baseDoc: baseDoc ?? this.baseDoc,
+  );
 
   @override
   String toString() =>
@@ -122,14 +130,13 @@ class CollabPlugin extends Plugin {
   String get key => 'collab';
 
   @override
-  Object init(DocNode doc, Selection selection) => CollabState(
-        version: version,
-        clientId: clientId,
-      );
+  Object init(DocNode doc, Selection selection) =>
+      CollabState(version: version, clientId: clientId);
 
   @override
   Object? apply(Transaction tr, Object? state, {Selection? selectionBefore}) {
-    final collab = state as CollabState? ??
+    final collab =
+        state as CollabState? ??
         CollabState(version: version, clientId: clientId);
 
     final meta = tr.getMeta('collab');
@@ -152,10 +159,26 @@ class CollabPlugin extends Plugin {
           ? collab.unconfirmedMaps.sublist(confirmCount)
           : const <StepMap>[];
 
+      // Advance baseDoc through the confirmed steps.
+      DocNode? newBaseDoc;
+      if (remaining.isNotEmpty && collab.baseDoc != null) {
+        var doc = collab.baseDoc!;
+        for (
+          var i = 0;
+          i < confirmCount && i < collab.unconfirmedSteps.length;
+          i++
+        ) {
+          final result = collab.unconfirmedSteps[i].apply(doc);
+          if (result.isOk) doc = result.doc!;
+        }
+        newBaseDoc = doc;
+      }
+
       return collab.copyWith(
         version: confirmVersion,
         unconfirmedSteps: remaining,
         unconfirmedMaps: remainingMaps,
+        baseDoc: newBaseDoc,
       );
     }
 
@@ -175,7 +198,13 @@ class CollabPlugin extends Plugin {
     // Local edit (explicit 'local' or no collab metadata) — accumulate steps.
     if (!tr.hasSteps) return collab;
 
+    // Store the pre-edit doc as baseDoc when first unconfirmed step is added.
+    final newBaseDoc = collab.unconfirmedSteps.isEmpty
+        ? tr.docBefore
+        : collab.baseDoc;
+
     return collab.copyWith(
+      baseDoc: newBaseDoc,
       unconfirmedSteps: [...collab.unconfirmedSteps, ...tr.steps],
       unconfirmedMaps: [...collab.unconfirmedMaps, ...tr.maps],
     );
@@ -220,7 +249,8 @@ class ReceiveResult {
 /// }
 /// ```
 ({int version, List<Step> steps, String clientId})? sendableSteps(
-    EditorState state) {
+  EditorState state,
+) {
   final collab = state.pluginState<CollabState>('collab');
   if (collab == null || !collab.hasPending) return null;
 
@@ -265,8 +295,10 @@ EditorState? receiveSteps(
   final collab = state.pluginState<CollabState>('collab');
   if (collab == null) return null;
   if (clientIds.length != steps.length) {
-    throw ArgumentError('clientIds.length (${clientIds.length}) must equal '
-        'steps.length (${steps.length})');
+    throw ArgumentError(
+      'clientIds.length (${clientIds.length}) must equal '
+      'steps.length (${steps.length})',
+    );
   }
 
   // The new version after all received steps are applied.
@@ -320,40 +352,43 @@ EditorState? receiveSteps(
   // steps on top.
 
   // Step 1: Compute the document without our unconfirmed steps.
-  // We do this by inverting our unconfirmed steps against the current doc.
-  var baseDoc = state.doc;
+  // Use the stored base doc (the confirmed doc before unconfirmed steps).
+  // If no base doc is stored (legacy state), fall back to computing it
+  // by applying the confirmed steps forward from state.doc.
+  DocNode baseDoc;
+  if (collab.baseDoc != null) {
+    // Apply only the confirmed steps (the ones the server just acknowledged)
+    // to get the base doc for the remaining unconfirmed steps.
+    var doc = collab.baseDoc!;
+    for (var i = 0; i < ownCount; i++) {
+      final result = collab.unconfirmedSteps[i].apply(doc);
+      if (result.isOk) doc = result.doc!;
+    }
+    baseDoc = doc;
+  } else {
+    // Fallback: base doc is state.doc if no unconfirmed steps remain,
+    // otherwise we cannot correctly reconstruct it.
+    baseDoc = state.doc;
+  }
 
-  // Invert remaining unconfirmed steps to get back to the common base.
+  // Compute inverse steps by applying remaining unconfirmed forward
+  // from baseDoc, then inverting each with its correct pre-step doc.
   final invertedUnconfirmed = <Step>[];
   {
-    // Walk backwards through remaining unconfirmed, computing inverses.
     var tempDoc = baseDoc;
-    final inversions = <Step>[];
-
-    // First, compute the document states going forward from the base
-    // to be able to invert correctly.
-    // We need to start from the state BEFORE the remaining unconfirmed
-    // steps were applied. We can get there by inverting them in reverse.
-
-    // Collect the intermediate docs for inversion.
-    // We need docs BEFORE each unconfirmed step was applied.
-    // Since steps are already applied in state.doc, we invert backwards.
-    final docs = <DocNode>[baseDoc];
-    for (var i = remainingUnconfirmed.length - 1; i >= 0; i--) {
+    for (var i = 0; i < remainingUnconfirmed.length; i++) {
       final inv = remainingUnconfirmed[i].invert(tempDoc);
-      final result = inv.apply(tempDoc);
+      invertedUnconfirmed.add(inv);
+      final result = remainingUnconfirmed[i].apply(tempDoc);
       if (result.isOk) {
         tempDoc = result.doc!;
-        inversions.insert(0, inv);
-        docs.insert(0, tempDoc);
-      } else {
-        // If inversion fails, we cannot undo — bail out with what we have.
-        break;
       }
     }
-
-    invertedUnconfirmed.addAll(inversions);
-    baseDoc = tempDoc;
+    // Reverse so they undo in the correct order (last applied → first undone).
+    final reversed = invertedUnconfirmed.reversed.toList();
+    invertedUnconfirmed
+      ..clear()
+      ..addAll(reversed);
   }
 
   // Step 2: Apply remote steps to the base document.
@@ -420,11 +455,13 @@ EditorState? receiveSteps(
   // added, so the final selection in the applied state will be correct.
 
   // Step 6: Build the new collab state.
+  // The new baseDoc is remoteDoc (the doc after remote steps, before rebased steps).
   final newCollab = CollabState(
     version: newVersion,
     clientId: collab.clientId,
     unconfirmedSteps: rebasedSteps,
     unconfirmedMaps: rebasedMaps,
+    baseDoc: rebasedSteps.isNotEmpty ? remoteDoc : null,
   );
 
   // Step 7: Apply the transaction to get the new editor state.
@@ -504,6 +541,46 @@ Step? transformStep(Step stepA, Step stepB, DocNode doc) {
   if (stepA is SetAttrStep) {
     final newPos = mapB.map(stepA.pos, assoc: 1);
     return SetAttrStep(newPos, stepA.key, stepA.value);
+  }
+
+  // ── SplitStep over any step ───────────────────────────────────────
+  if (stepA is SplitStep) {
+    final newPos = mapB.map(stepA.pos, assoc: 1);
+    return SplitStep(
+      newPos,
+      depth: stepA.depth,
+      typeAfter: stepA.typeAfter,
+      attrsAfter: stepA.attrsAfter,
+    );
+  }
+
+  // ── JoinStep over any step ────────────────────────────────────────
+  if (stepA is JoinStep) {
+    final newPos = mapB.map(stepA.pos, assoc: 1);
+    return JoinStep(newPos, depth: stepA.depth);
+  }
+
+  // ── WrapStep over any step ────────────────────────────────────────
+  if (stepA is WrapStep) {
+    final newFrom = mapB.map(stepA.from, assoc: 1);
+    final newTo = mapB.map(stepA.to, assoc: -1);
+    if (newFrom >= newTo) return null;
+    return WrapStep(
+      newFrom,
+      newTo,
+      stepA.wrapperType,
+      wrapperAttrs: stepA.wrapperAttrs,
+    );
+  }
+
+  // ── UnwrapStep over any step ──────────────────────────────────────
+  if (stepA is UnwrapStep) {
+    final newPos = mapB.map(stepA.pos, assoc: 1);
+    final oldEnd = stepA.pos + stepA.wrapperNodeSize;
+    final newEnd = mapB.map(oldEnd, assoc: -1);
+    final newSize = newEnd - newPos;
+    if (newSize < 2) return null; // wrapper collapsed
+    return UnwrapStep(newPos, wrapperNodeSize: newSize);
   }
 
   // Unknown step type — cannot transform.
@@ -608,11 +685,7 @@ ReplaceStep _mapReplaceStep(ReplaceStep step, StepMap map) {
 ///
 /// Returns the transformed versions of [stepsA]. Steps that could not
 /// be transformed (conflicts) are dropped.
-List<Step> transformSteps(
-  List<Step> stepsA,
-  List<Step> stepsB,
-  DocNode doc,
-) {
+List<Step> transformSteps(List<Step> stepsA, List<Step> stepsB, DocNode doc) {
   if (stepsA.isEmpty || stepsB.isEmpty) return List.of(stepsA);
 
   final result = <Step>[];
@@ -700,9 +773,11 @@ class AuthorityStep {
 class Authority {
   /// Creates an authority with the given initial document.
   Authority({required DocNode doc})
-      : _doc = doc,
-        _steps = [];
+    : _initialDoc = doc,
+      _doc = doc,
+      _steps = [];
 
+  final DocNode _initialDoc;
   DocNode _doc;
   final List<AuthorityStep> _steps;
 
@@ -784,14 +859,12 @@ class Authority {
   /// Replays the document from the initial state up to [targetVersion].
   ///
   /// This is used internally to get the document at a past version for
-  /// accurate OT transforms. For efficiency in production, you would
-  /// cache document snapshots at intervals.
+  /// accurate OT transforms. Replays forward from the initial document
+  /// to ensure correct intermediate states.
   DocNode _replayDoc(int targetVersion) {
-    // Walk backwards from the current doc, inverting steps.
-    var doc = _doc;
-    for (var i = _steps.length - 1; i >= targetVersion; i--) {
-      final inverse = _steps[i].step.invert(doc);
-      final result = inverse.apply(doc);
+    var doc = _initialDoc;
+    for (var i = 0; i < targetVersion; i++) {
+      final result = _steps[i].step.apply(doc);
       if (result.isOk) {
         doc = result.doc!;
       }

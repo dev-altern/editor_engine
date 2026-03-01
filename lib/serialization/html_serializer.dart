@@ -120,9 +120,7 @@ class HtmlSerializer {
 
       case 'check_item':
         final checked = node.attrs['checked'] == true;
-        buffer.write(
-          '<li class="check-item" data-checked="$checked">',
-        );
+        buffer.write('<li class="check-item" data-checked="$checked">');
         _serializeChildren(node.content, buffer);
         buffer.write('</li>');
 
@@ -205,9 +203,7 @@ class HtmlSerializer {
           ' data-widget-type="${_escapeAttr(widgetNode.widgetType)}"',
         );
         if (widgetAttrs.isNotEmpty) {
-          buffer.write(
-            ' data-attrs="${_escapeAttr(jsonEncode(widgetAttrs))}"',
-          );
+          buffer.write(' data-attrs="${_escapeAttr(jsonEncode(widgetAttrs))}"');
         }
         buffer.write('></span>');
 
@@ -279,20 +275,15 @@ class HtmlSerializer {
         );
       case 'color':
         final color = _escapeCss(mark.attrs['color'] as String? ?? 'inherit');
-        return (
-          open: '<span style="color: $color">',
-          close: '</span>',
-        );
+        return (open: '<span style="color: $color">', close: '</span>');
       default:
         // Unknown mark — use data attributes
-        final attrsJson =
-            mark.attrs.isNotEmpty ? jsonEncode(mark.attrs) : null;
+        final attrsJson = mark.attrs.isNotEmpty ? jsonEncode(mark.attrs) : null;
         final attrsAttr = attrsJson != null
             ? ' data-attrs="${_escapeAttr(attrsJson)}"'
             : '';
         return (
-          open:
-              '<span data-mark="${_escapeAttr(mark.type)}"$attrsAttr>',
+          open: '<span data-mark="${_escapeAttr(mark.type)}"$attrsAttr>',
           close: '</span>',
         );
     }
@@ -304,22 +295,39 @@ class HtmlSerializer {
   DocNode deserialize(String html) {
     final trimmed = html.trim();
     if (trimmed.isEmpty) {
-      return DocNode(content: Fragment([
-        const BlockNode(type: 'paragraph', inlineContent: true),
-      ]));
+      return DocNode(
+        content: Fragment([
+          const BlockNode(type: 'paragraph', inlineContent: true),
+        ]),
+      );
     }
 
     final tokens = _tokenize(trimmed);
     final blocks = _parseTokensToBlocks(tokens);
 
     if (blocks.isEmpty) {
-      return DocNode(content: Fragment([
-        const BlockNode(type: 'paragraph', inlineContent: true),
-      ]));
+      return DocNode(
+        content: Fragment([
+          const BlockNode(type: 'paragraph', inlineContent: true),
+        ]),
+      );
     }
 
     return DocNode(content: Fragment(blocks));
   }
+
+  // ── Precompiled patterns ────────────────────────────────────────
+
+  static final _whitespaceRe = RegExp(r'\s');
+  static final _whitespaceRunRe = RegExp(r'\s+');
+  static final _trailingSlashRe = RegExp(r'/\s*$');
+  static final _attrRe = RegExp(
+    r'''(\w[\w\-]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?''',
+  );
+  static final _langClassRe = RegExp(r'language-(\S+)');
+  static final _bgColorRe = RegExp(r'background-color:\s*([^;]+)');
+  static final _colorRe = RegExp(r'(?:^|;)\s*color:\s*([^;]+)');
+  static final _cssUnsafeRe = RegExp(r'[;\{\}<>"\x27\\]');
 
   // ── Tokenizer ─────────────────────────────────────────────────────
 
@@ -329,13 +337,11 @@ class HtmlSerializer {
 
     while (pos < html.length) {
       if (html[pos] == '<') {
-        // Find the end of the tag
-        final closeIndex = html.indexOf('>', pos);
+        // Find the end of the tag, respecting quoted attribute values.
+        final closeIndex = _findTagClose(html, pos + 1);
         if (closeIndex == -1) {
           // Malformed — treat rest as text
-          tokens.add(_HtmlToken.text(
-            _decodeEntities(html.substring(pos)),
-          ));
+          tokens.add(_HtmlToken.text(_decodeEntities(html.substring(pos))));
           break;
         }
 
@@ -356,7 +362,7 @@ class HtmlSerializer {
           final tagName = tagContent
               .substring(1)
               .trim()
-              .split(RegExp(r'\s'))
+              .split(_whitespaceRe)
               .first
               .toLowerCase();
           tokens.add(_HtmlToken.closeTag(tagName));
@@ -365,14 +371,14 @@ class HtmlSerializer {
           final selfClosing =
               tagContent.endsWith('/') || _isSelfClosingTag(tagContent);
           final parts = tagContent
-              .replaceAll(RegExp(r'/\s*$'), '')
-              .split(RegExp(r'\s+'));
+              .replaceAll(_trailingSlashRe, '')
+              .split(_whitespaceRunRe);
           final tagName = parts.first.toLowerCase();
           final attrsString = parts.length > 1
               ? tagContent.substring(tagName.length).trim()
               : '';
           final attrs = _parseAttributes(
-            attrsString.replaceAll(RegExp(r'/\s*$'), ''),
+            attrsString.replaceAll(_trailingSlashRe, ''),
           );
 
           if (selfClosing || _isVoidElement(tagName)) {
@@ -398,35 +404,52 @@ class HtmlSerializer {
     return tokens;
   }
 
-  bool _isSelfClosingTag(String tagContent) =>
-      tagContent.endsWith('/');
+  /// Finds the closing `>` of a tag starting after the `<`, skipping over
+  /// quoted attribute values that may contain `>`.
+  static int _findTagClose(String html, int start) {
+    var inSingle = false;
+    var inDouble = false;
+    for (var i = start; i < html.length; i++) {
+      final c = html[i];
+      if (inSingle) {
+        if (c == "'") inSingle = false;
+      } else if (inDouble) {
+        if (c == '"') inDouble = false;
+      } else if (c == "'") {
+        inSingle = true;
+      } else if (c == '"') {
+        inDouble = true;
+      } else if (c == '>') {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  bool _isSelfClosingTag(String tagContent) => tagContent.endsWith('/');
 
   bool _isVoidElement(String tagName) => const {
-        'br',
-        'hr',
-        'img',
-        'input',
-        'meta',
-        'link',
-        'area',
-        'base',
-        'col',
-        'embed',
-        'source',
-        'track',
-        'wbr',
-      }.contains(tagName);
+    'br',
+    'hr',
+    'img',
+    'input',
+    'meta',
+    'link',
+    'area',
+    'base',
+    'col',
+    'embed',
+    'source',
+    'track',
+    'wbr',
+  }.contains(tagName);
 
   Map<String, String> _parseAttributes(String attrString) {
     final attrs = <String, String>{};
     if (attrString.isEmpty) return attrs;
 
     // Match attr="value", attr='value', or attr=value or standalone attr
-    final re = RegExp(
-      r'''(\w[\w\-]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?''',
-    );
-
-    for (final match in re.allMatches(attrString)) {
+    for (final match in _attrRe.allMatches(attrString)) {
       final key = match.group(1)!;
       final value = match.group(2) ?? match.group(3) ?? match.group(4) ?? '';
       attrs[key] = _decodeEntities(value);
@@ -449,11 +472,13 @@ class HtmlSerializer {
         context.advance();
         if (text.trim().isNotEmpty) {
           // Bare text — wrap in paragraph
-          blocks.add(BlockNode(
-            type: 'paragraph',
-            content: Fragment([TextNode(text)]),
-            inlineContent: true,
-          ));
+          blocks.add(
+            BlockNode(
+              type: 'paragraph',
+              content: Fragment([TextNode(text)]),
+              inlineContent: true,
+            ),
+          );
         }
         continue;
       }
@@ -578,34 +603,51 @@ class HtmlSerializer {
             ]),
           );
         }
-        return BlockNode(
-          type: 'blockquote',
-          content: Fragment(blocks),
-        );
+        return BlockNode(type: 'blockquote', content: Fragment(blocks));
 
       case 'pre':
-        // Look for <code> inside
-        final text = _extractTextFromTokens(innerTokens);
+        // Look for <code class="language-*"> inside to extract language.
+        String? language;
+        var codeTokens = innerTokens;
+        if (innerTokens.isNotEmpty &&
+            innerTokens.first.type == _TokenType.openTag &&
+            innerTokens.first.tagName == 'code') {
+          final codeAttrs = innerTokens.first.attrs;
+          final cls = codeAttrs['class'] ?? '';
+          final langMatch = _langClassRe.firstMatch(cls);
+          if (langMatch != null) {
+            language = langMatch.group(1);
+          }
+          // Strip the <code> open and matching </code> close tokens.
+          codeTokens = innerTokens.sublist(1);
+          if (codeTokens.isNotEmpty &&
+              codeTokens.last.type == _TokenType.closeTag &&
+              codeTokens.last.tagName == 'code') {
+            codeTokens = codeTokens.sublist(0, codeTokens.length - 1);
+          }
+        }
+        final text = _extractTextFromTokens(codeTokens);
+        final codeAttrs = <String, Object?>{};
+        if (language != null && language.isNotEmpty) {
+          codeAttrs['language'] = language;
+        }
         return BlockNode(
           type: 'code_block',
-          content:
-              text.isNotEmpty ? Fragment([TextNode(text)]) : Fragment.empty,
+          attrs: codeAttrs,
+          inlineContent: true,
+          content: text.isNotEmpty
+              ? Fragment([TextNode(text)])
+              : Fragment.empty,
         );
 
       case 'ul':
         // Check for checklist class
         if (attrs['class'] == 'checklist') {
           final items = _parseListItems(innerTokens, isCheckList: true);
-          return BlockNode(
-            type: 'check_list',
-            content: Fragment(items),
-          );
+          return BlockNode(type: 'check_list', content: Fragment(items));
         }
         final items = _parseListItems(innerTokens);
-        return BlockNode(
-          type: 'bullet_list',
-          content: Fragment(items),
-        );
+        return BlockNode(type: 'bullet_list', content: Fragment(items));
 
       case 'ol':
         final start = int.tryParse(attrs['start'] ?? '1') ?? 1;
@@ -651,17 +693,11 @@ class HtmlSerializer {
 
       case 'table':
         final rows = _parseTableRows(innerTokens);
-        return BlockNode(
-          type: 'table',
-          content: Fragment(rows),
-        );
+        return BlockNode(type: 'table', content: Fragment(rows));
 
       case 'tr':
         final cells = _parseTableCells(innerTokens);
-        return BlockNode(
-          type: 'table_row',
-          content: Fragment(cells),
-        );
+        return BlockNode(type: 'table_row', content: Fragment(cells));
 
       case 'td' || 'th':
         final colspan = int.tryParse(attrs['colspan'] ?? '1') ?? 1;
@@ -688,16 +724,11 @@ class HtmlSerializer {
           final blocks = _parseTokensToBlocks(innerTokens);
           return BlockNode(
             type: 'callout',
-            attrs: {
-              'icon': attrs['data-icon'] ?? '',
-            },
+            attrs: {'icon': attrs['data-icon'] ?? ''},
             content: blocks.isNotEmpty
                 ? Fragment(blocks)
                 : Fragment([
-                    const BlockNode(
-                      type: 'paragraph',
-                      inlineContent: true,
-                    ),
+                    const BlockNode(type: 'paragraph', inlineContent: true),
                   ]),
           );
         }
@@ -709,10 +740,7 @@ class HtmlSerializer {
               : <String, dynamic>{};
           return BlockNode(
             type: 'embed',
-            attrs: {
-              'embedType': embedType,
-              'data': data,
-            },
+            attrs: {'embedType': embedType, 'data': data},
             isLeaf: true,
             isAtom: true,
           );
@@ -728,7 +756,9 @@ class HtmlSerializer {
         // Generic div — parse as container
         final blocks = _parseTokensToBlocks(innerTokens);
         if (blocks.isNotEmpty) {
-          return blocks.length == 1 ? blocks.first : null;
+          if (blocks.length == 1) return blocks.first;
+          // Multiple blocks: wrap in a generic container.
+          return BlockNode(type: 'div', content: Fragment(blocks));
         }
         final inlines = _parseInlineTokens(innerTokens);
         if (inlines.isNotEmpty) {
@@ -745,11 +775,7 @@ class HtmlSerializer {
         if (_isInlineTag(tagName)) {
           // Shouldn't normally reach here at block level, but handle
           // gracefully by wrapping in a paragraph
-          final inlines = _parseInlineElement(
-            tagName,
-            attrs,
-            innerTokens,
-          );
+          final inlines = _parseInlineElement(tagName, attrs, innerTokens);
           if (inlines.isNotEmpty) {
             return BlockNode(
               type: 'paragraph',
@@ -764,10 +790,7 @@ class HtmlSerializer {
         if (blocks.isNotEmpty) {
           return blocks.length == 1
               ? blocks.first
-              : BlockNode(
-                  type: 'paragraph',
-                  content: Fragment(blocks),
-                );
+              : BlockNode(type: 'paragraph', content: Fragment(blocks));
         }
         return null;
     }
@@ -836,8 +859,12 @@ class HtmlSerializer {
         context.advance();
       }
 
-      final inlineNodes =
-          _parseInlineElement(tagName, attrs, innerTokens, inheritedMarks);
+      final inlineNodes = _parseInlineElement(
+        tagName,
+        attrs,
+        innerTokens,
+        inheritedMarks,
+      );
       nodes.addAll(inlineNodes);
     }
 
@@ -873,8 +900,7 @@ class HtmlSerializer {
         mark = Mark.link(href, title: title);
       case 'mark':
         final style = attrs['style'] ?? '';
-        final colorMatch =
-            RegExp(r'background-color:\s*([^;]+)').firstMatch(style);
+        final colorMatch = _bgColorRe.firstMatch(style);
         final color = colorMatch?.group(1)?.trim() ?? 'yellow';
         mark = Mark.highlight(color);
       case 'span':
@@ -884,7 +910,7 @@ class HtmlSerializer {
           final dataAttrs = attrs['data-attrs'];
           final markAttrs = dataAttrs != null
               ? (jsonDecode(dataAttrs) as Map<String, dynamic>)
-                  .cast<String, Object?>()
+                    .cast<String, Object?>()
               : const <String, Object?>{};
           mark = Mark(markType, markAttrs);
         } else if (attrs['class'] == 'inline-widget') {
@@ -892,7 +918,7 @@ class HtmlSerializer {
           final dataAttrs = attrs['data-attrs'];
           final widgetAttrs = dataAttrs != null
               ? (jsonDecode(dataAttrs) as Map<String, dynamic>)
-                  .cast<String, Object?>()
+                    .cast<String, Object?>()
               : <String, Object?>{};
           return [
             InlineWidgetNode(
@@ -904,8 +930,7 @@ class HtmlSerializer {
         } else {
           // Check for color style
           final style = attrs['style'] ?? '';
-          final colorMatch =
-              RegExp(r'(?:^|;)\s*color:\s*([^;]+)').firstMatch(style);
+          final colorMatch = _colorRe.firstMatch(style);
           if (colorMatch != null) {
             mark = Mark.color(colorMatch.group(1)!.trim());
           }
@@ -924,22 +949,22 @@ class HtmlSerializer {
   }
 
   bool _isInlineTag(String tagName) => const {
-        'strong',
-        'b',
-        'em',
-        'i',
-        'u',
-        's',
-        'del',
-        'strike',
-        'code',
-        'sup',
-        'sub',
-        'a',
-        'mark',
-        'span',
-        'br',
-      }.contains(tagName);
+    'strong',
+    'b',
+    'em',
+    'i',
+    'u',
+    's',
+    'del',
+    'strike',
+    'code',
+    'sup',
+    'sub',
+    'a',
+    'mark',
+    'span',
+    'br',
+  }.contains(tagName);
 
   // ── List and table helpers ────────────────────────────────────────
 
@@ -954,8 +979,7 @@ class HtmlSerializer {
     while (context.pos < context.tokens.length) {
       final token = context.current;
 
-      if (token.type == _TokenType.openTag &&
-          token.tagName == 'li') {
+      if (token.type == _TokenType.openTag && token.tagName == 'li') {
         final node = _parseElement(context);
         if (node != null) {
           items.add(node);
@@ -1052,17 +1076,31 @@ class HtmlSerializer {
   ///
   /// Strips characters that could break out of the property value context
   /// (semicolons, braces, parentheses, quotes, backslashes, angle brackets).
-  static String _escapeCss(String value) =>
-      value.replaceAll(RegExp(r'[;\{\}\(\)<>"\x27\\]'), '');
+  static String _escapeCss(String value) => value.replaceAll(_cssUnsafeRe, '');
 
-  static String _decodeEntities(String text) => text
-      .replaceAll('&amp;', '&')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll('&quot;', '"')
-      .replaceAll('&#39;', "'")
-      .replaceAll('&apos;', "'")
-      .replaceAll('&nbsp;', '\u00A0');
+  static final _numericEntityRe = RegExp(r'&#x([0-9a-fA-F]+);|&#(\d+);');
+
+  static String _decodeEntities(String text) {
+    // Decode &amp; LAST to prevent double-decoding (e.g. &amp;lt; → &lt; → <).
+    var result = text
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&apos;', "'")
+        .replaceAll('&nbsp;', '\u00A0');
+    // Decode numeric character references: &#xHH; and &#DD;
+    result = result.replaceAllMapped(_numericEntityRe, (m) {
+      final hex = m.group(1);
+      final dec = m.group(2);
+      final codePoint = hex != null
+          ? int.parse(hex, radix: 16)
+          : int.parse(dec!);
+      return String.fromCharCode(codePoint);
+    });
+    // &amp; must be last to avoid double-decoding.
+    return result.replaceAll('&amp;', '&');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1085,10 +1123,7 @@ class _HtmlToken {
   factory _HtmlToken.closeTag(String tagName) =>
       _HtmlToken._(type: _TokenType.closeTag, tagName: tagName);
 
-  factory _HtmlToken.selfClosing(
-    String tagName,
-    Map<String, String> attrs,
-  ) =>
+  factory _HtmlToken.selfClosing(String tagName, Map<String, String> attrs) =>
       _HtmlToken._(
         type: _TokenType.selfClosing,
         tagName: tagName,

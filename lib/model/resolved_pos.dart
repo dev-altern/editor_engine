@@ -129,8 +129,10 @@ class ResolvedPos {
   /// Resolves a position within the document tree.
   static ResolvedPos resolve(Node doc, int pos) {
     if (pos < 0 || pos > doc.nodeSize - 2) {
-      throw RangeError('Position $pos out of range for document of size '
-          '${doc.nodeSize - 2}');
+      throw RangeError(
+        'Position $pos out of range for document of size '
+        '${doc.nodeSize - 2}',
+      );
     }
 
     final path = <Object>[];
@@ -157,18 +159,18 @@ class ResolvedPos {
         final start = childOffset;
         final end = childOffset + child.nodeSize;
 
-        if (parentOffset <= end) {
+        if (parentOffset < end) {
           childIndex = i;
 
           if (child.isText || child.isLeaf || parentOffset == start) {
             // Terminal: text/leaf child or position at boundary
-            path.addAll([current, childIndex, offset + start]);
+            path.addAll([current, childIndex, offset]);
             done = true;
             break;
           }
 
           // Descend into non-leaf, non-text child
-          path.addAll([current, childIndex, offset + start]);
+          path.addAll([current, childIndex, offset]);
           current = child;
           offset = offset + start + 1; // +1 for open token
           parentOffset = parentOffset - start - 1;
@@ -182,16 +184,12 @@ class ResolvedPos {
       if (done) break;
 
       if (!descend) {
-        path.addAll([current, current.content.childCount, offset + childOffset]);
+        path.addAll([current, current.content.childCount, offset]);
         break;
       }
     }
 
-    return ResolvedPos._(
-      pos: pos,
-      path: path,
-      parentOffset: parentOffset,
-    );
+    return ResolvedPos._(pos: pos, path: path, parentOffset: parentOffset);
   }
 
   @override

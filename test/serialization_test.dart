@@ -95,10 +95,7 @@ void main() {
 
     test('round-trips blockquote', () {
       final d = doc([
-        BlockNode(
-          type: 'blockquote',
-          content: Fragment([para('Quoted text')]),
-        ),
+        BlockNode(type: 'blockquote', content: Fragment([para('Quoted text')])),
       ]);
       final serialized = html.serialize(d);
       expect(serialized, contains('<blockquote>'));
@@ -206,10 +203,7 @@ void main() {
 
     test('round-trips blockquote', () {
       final d = doc([
-        BlockNode(
-          type: 'blockquote',
-          content: Fragment([para('Quoted')]),
-        ),
+        BlockNode(type: 'blockquote', content: Fragment([para('Quoted')])),
       ]);
       final serialized = md.serialize(d);
       expect(serialized, contains('> Quoted'));
@@ -267,6 +261,117 @@ void main() {
       expect(serialized, contains('`code()`'));
       final restored = md.deserialize(serialized);
       expect(restored.textContent, 'use code()');
+    });
+
+    test('round-trips inline widget via HTML comment', () {
+      final d = doc([
+        BlockNode(
+          type: 'paragraph',
+          inlineContent: true,
+          content: Fragment([
+            TextNode('before '),
+            InlineWidgetNode(widgetType: 'mention', attrs: {'userId': 'u123'}),
+            TextNode(' after'),
+          ]),
+        ),
+      ]);
+      final serialized = md.serialize(d);
+      expect(serialized, contains('<!-- widget:mention'));
+      final restored = md.deserialize(serialized);
+      final block = restored.content.child(0);
+      var foundWidget = false;
+      block.content.forEach((node, _, __) {
+        if (node is InlineWidgetNode) {
+          expect(node.widgetType, 'mention');
+          expect(node.attrs['userId'], 'u123');
+          foundWidget = true;
+        }
+      });
+      expect(foundWidget, true);
+    });
+  });
+
+  group('JsonSerializer — edge cases', () {
+    final jsonSerializer = JsonSerializer();
+
+    test('round-trips inline widget', () {
+      final d = doc([
+        BlockNode(
+          type: 'paragraph',
+          inlineContent: true,
+          content: Fragment([
+            TextNode('Hello '),
+            InlineWidgetNode(widgetType: 'emoji', attrs: {'code': 'smile'}),
+          ]),
+        ),
+      ]);
+      final serialized = jsonSerializer.serialize(d);
+      final restored = jsonSerializer.deserialize(serialized);
+      final block = restored.content.child(0);
+      var foundWidget = false;
+      block.content.forEach((node, _, __) {
+        if (node is InlineWidgetNode) {
+          expect(node.widgetType, 'emoji');
+          expect(node.attrs['code'], 'smile');
+          foundWidget = true;
+        }
+      });
+      expect(foundWidget, true);
+    });
+
+    test('round-trips nested list in blockquote', () {
+      final d = doc([
+        BlockNode(
+          type: 'blockquote',
+          content: Fragment([
+            bulletList([
+              listItem([para('Item 1')]),
+              listItem([para('Item 2')]),
+            ]),
+          ]),
+        ),
+      ]);
+      final serialized = jsonSerializer.serialize(d);
+      final restored = jsonSerializer.deserialize(serialized);
+      final bq = restored.content.child(0);
+      expect(bq.type, 'blockquote');
+      final list = bq.content.child(0);
+      expect(list.type, 'bullet_list');
+      expect(list.content.childCount, 2);
+    });
+  });
+
+  group('HtmlSerializer — edge cases', () {
+    final html = HtmlSerializer();
+
+    test('round-trips bullet list', () {
+      final d = doc([
+        bulletList([
+          listItem([para('Item 1')]),
+          listItem([para('Item 2')]),
+        ]),
+      ]);
+      final serialized = html.serialize(d);
+      expect(serialized, contains('<ul>'));
+      expect(serialized, contains('<li>'));
+      final restored = html.deserialize(serialized);
+      expect(restored.content.child(0).type, 'bullet_list');
+    });
+
+    test('round-trips image', () {
+      final d = doc([
+        BlockNode(
+          type: 'image',
+          attrs: {'src': 'photo.jpg', 'alt': 'A photo'},
+          isLeaf: true,
+          isAtom: true,
+        ),
+      ]);
+      final serialized = html.serialize(d);
+      expect(serialized, contains('<img'));
+      expect(serialized, contains('photo.jpg'));
+      final restored = html.deserialize(serialized);
+      expect(restored.content.child(0).type, 'image');
     });
   });
 }

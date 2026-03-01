@@ -34,14 +34,19 @@ class AddMarkStep extends Step {
 
   @override
   Map<String, dynamic> toJson() => {
-        'stepType': 'addMark',
-        'from': from,
-        'to': to,
-        'mark': mark.toJson(),
-      };
+    'stepType': 'addMark',
+    'from': from,
+    'to': to,
+    'mark': mark.toJson(),
+  };
 
   Fragment _applyMark(
-      Fragment fragment, int from, int to, Mark mark, int base) {
+    Fragment fragment,
+    int from,
+    int to,
+    Mark mark,
+    int base,
+  ) {
     final children = <Node>[];
     var pos = base;
 
@@ -61,14 +66,11 @@ class AddMarkStep extends Step {
         if (markTo < textChild.text.length) {
           children.add(textChild.cut(markTo));
         }
-      } else if (child is InlineWidgetNode &&
-          childEnd > from &&
-          pos < to) {
+      } else if (child is InlineWidgetNode && childEnd > from && pos < to) {
         // Inline widgets can also carry marks
         children.add(child.withMarks(child.marks.addMark(mark)));
       } else if (!child.isLeaf && child.content.isNotEmpty) {
-        final newContent =
-            _applyMark(child.content, from, to, mark, pos + 1);
+        final newContent = _applyMark(child.content, from, to, mark, pos + 1);
         children.add(child.copy(newContent));
       } else {
         children.add(child);
@@ -111,14 +113,19 @@ class RemoveMarkStep extends Step {
 
   @override
   Map<String, dynamic> toJson() => {
-        'stepType': 'removeMark',
-        'from': from,
-        'to': to,
-        'mark': mark.toJson(),
-      };
+    'stepType': 'removeMark',
+    'from': from,
+    'to': to,
+    'mark': mark.toJson(),
+  };
 
   Fragment _removeMark(
-      Fragment fragment, int from, int to, Mark mark, int base) {
+    Fragment fragment,
+    int from,
+    int to,
+    Mark mark,
+    int base,
+  ) {
     final children = <Node>[];
     var pos = base;
 
@@ -135,8 +142,7 @@ class RemoveMarkStep extends Step {
           if (markFrom > 0) {
             children.add(textChild.cut(0, markFrom));
           }
-          children
-              .add(textChild.cut(markFrom, markTo).removeMark(mark.type));
+          children.add(textChild.cut(markFrom, markTo).removeMark(mark.type));
           if (markTo < textChild.text.length) {
             children.add(textChild.cut(markTo));
           }
@@ -150,8 +156,7 @@ class RemoveMarkStep extends Step {
         // Inline widgets can also carry marks
         children.add(child.withMarks(child.marks.removeMark(mark.type)));
       } else if (!child.isLeaf && child.content.isNotEmpty) {
-        final newContent =
-            _removeMark(child.content, from, to, mark, pos + 1);
+        final newContent = _removeMark(child.content, from, to, mark, pos + 1);
         children.add(child.copy(newContent));
       } else {
         children.add(child);

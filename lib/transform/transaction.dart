@@ -23,10 +23,7 @@ import 'step.dart';
 /// ```
 class Transaction {
   /// Creates a transaction starting from the given document.
-  Transaction(this._doc)
-      : _steps = [],
-        _maps = [],
-        _currentDoc = _doc;
+  Transaction(this._doc) : _steps = [], _maps = [], _currentDoc = _doc;
 
   final DocNode _doc;
   final List<Step> _steps;
@@ -130,6 +127,83 @@ class Transaction {
   /// Changes a node attribute.
   Transaction setNodeAttr(int pos, String key, Object? value) =>
       addStep(SetAttrStep(pos, key, value));
+
+  // ── Structure operations ──────────────────────────────────────────
+
+  /// Splits a block at [pos], creating two sibling blocks.
+  Transaction split(
+    int pos, {
+    int depth = 1,
+    String? typeAfter,
+    Map<String, Object?>? attrsAfter,
+  }) => addStep(
+    SplitStep(pos, depth: depth, typeAfter: typeAfter, attrsAfter: attrsAfter),
+  );
+
+  /// Joins two adjacent sibling blocks at the gap position [pos].
+  Transaction join(int pos, {int depth = 1}) =>
+      addStep(JoinStep(pos, depth: depth));
+
+  /// Wraps blocks in the range [from]..[to] in a new container node.
+  Transaction wrap(
+    int from,
+    int to,
+    String wrapperType, {
+    Map<String, Object?> wrapperAttrs = const {},
+  }) => addStep(WrapStep(from, to, wrapperType, wrapperAttrs: wrapperAttrs));
+
+  /// Removes a wrapper node at [pos], promoting its children to siblings.
+  Transaction unwrap(int pos, {required int wrapperNodeSize}) =>
+      addStep(UnwrapStep(pos, wrapperNodeSize: wrapperNodeSize));
+
+  /// Changes the type of the block at [pos].
+  Transaction setBlockType(
+    int pos,
+    String newType, {
+    Map<String, Object?> attrs = const {},
+  }) {
+    final $pos = _currentDoc.resolve(pos);
+    final node = $pos.nodeAfter;
+    if (node == null) {
+      throw StateError('No node at position $pos');
+    }
+    final newBlock = BlockNode(
+      type: newType,
+      attrs: attrs,
+      inlineContent: node.inlineContent,
+      content: node.content,
+    );
+    final slice = Slice(Fragment.from(newBlock), 0, 0);
+    return addStep(ReplaceStep(pos, pos + node.nodeSize, slice));
+  }
+
+  /// Deletes the block at [pos].
+  Transaction deleteBlock(int pos) {
+    final $pos = _currentDoc.resolve(pos);
+    final node = $pos.nodeAfter;
+    if (node == null) {
+      throw StateError('No node at position $pos');
+    }
+    return addStep(ReplaceStep.delete(pos, pos + node.nodeSize));
+  }
+
+  /// Inserts a block after the node at [pos].
+  Transaction insertBlockAfter(int pos, Node block) {
+    final $pos = _currentDoc.resolve(pos);
+    final node = $pos.nodeAfter;
+    if (node == null) {
+      throw StateError('No node at position $pos');
+    }
+    final insertPos = pos + node.nodeSize;
+    final slice = Slice(Fragment.from(block), 0, 0);
+    return addStep(ReplaceStep.insert(insertPos, slice));
+  }
+
+  /// Inserts a block before the node at [pos].
+  Transaction insertBlockBefore(int pos, Node block) {
+    final slice = Slice(Fragment.from(block), 0, 0);
+    return addStep(ReplaceStep.insert(pos, slice));
+  }
 
   // ── Selection ───────────────────────────────────────────────────────
 

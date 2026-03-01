@@ -1,3 +1,5 @@
+import 'dart:convert' show jsonEncode, jsonDecode;
+
 import 'package:meta/meta.dart';
 
 import '../model/fragment.dart';
@@ -147,12 +149,12 @@ class MarkdownSerializer {
 
       case 'image':
         final src = node.attrs['src'] as String? ?? '';
-        final alt = node.attrs['alt'] as String? ?? '';
+        final alt = (node.attrs['alt'] as String? ?? '').replaceAll(']', r'\]');
         final title = node.attrs['title'] as String? ?? '';
         buffer.write(prefix);
         buffer.write('![$alt]($src');
         if (title.isNotEmpty) {
-          buffer.write(' "$title"');
+          buffer.write(' "${title.replaceAll('"', '\\"')}"');
         }
         buffer.write(')');
         buffer.writeln();
@@ -267,8 +269,10 @@ class MarkdownSerializer {
     if (rows.isEmpty) return;
 
     // Calculate column widths
-    final colCount =
-        rows.fold<int>(0, (max, row) => row.length > max ? row.length : max);
+    final colCount = rows.fold<int>(
+      0,
+      (max, row) => row.length > max ? row.length : max,
+    );
     final colWidths = List<int>.filled(colCount, 3);
     for (final row in rows) {
       for (var i = 0; i < row.length; i++) {
@@ -326,6 +330,12 @@ class MarkdownSerializer {
           buffer.write(' "$title"');
         }
         buffer.write(')');
+      } else if (node is InlineWidgetNode) {
+        // Encode inline widgets as HTML comments for lossless round-trip.
+        // Sanitize to prevent --> from breaking the comment.
+        final attrsJson = jsonEncode(node.attrs).replaceAll('-->', '--&gt;');
+        final safeType = node.widgetType.replaceAll('-->', '--&gt;');
+        buffer.write('<!-- widget:$safeType $attrsJson -->');
       } else {
         // Other inline nodes — just output text
         buffer.write(node.textContent);
@@ -370,10 +380,14 @@ class MarkdownSerializer {
       case 'code':
         return (prefix: '`', suffix: '`', transformedText: null);
       case 'link':
-        final href = mark.attrs['href'] as String? ?? '';
+        final href = (mark.attrs['href'] as String? ?? '')
+            .replaceAll(r'\', r'\\')
+            .replaceAll('(', '%28')
+            .replaceAll(')', '%29');
         final title = mark.attrs['title'] as String?;
-        final titlePart =
-            (title != null && title.isNotEmpty) ? ' "$title"' : '';
+        final titlePart = (title != null && title.isNotEmpty)
+            ? ' "${title.replaceAll('"', '\\"')}"'
+            : '';
         return (
           prefix: '[',
           suffix: ']($href$titlePart)',
@@ -390,18 +404,22 @@ class MarkdownSerializer {
   /// Deserializes a Markdown string into a document node.
   DocNode deserialize(String markdown) {
     if (markdown.trim().isEmpty) {
-      return DocNode(content: Fragment([
-        const BlockNode(type: 'paragraph', inlineContent: true),
-      ]));
+      return DocNode(
+        content: Fragment([
+          const BlockNode(type: 'paragraph', inlineContent: true),
+        ]),
+      );
     }
 
     final lines = markdown.split('\n');
     final blocks = _parseLines(lines);
 
     if (blocks.isEmpty) {
-      return DocNode(content: Fragment([
-        const BlockNode(type: 'paragraph', inlineContent: true),
-      ]));
+      return DocNode(
+        content: Fragment([
+          const BlockNode(type: 'paragraph', inlineContent: true),
+        ]),
+      );
     }
 
     return DocNode(content: Fragment(blocks));
@@ -428,16 +446,18 @@ class MarkdownSerializer {
       }
 
       // Heading: # through ######
-      final headingMatch = RegExp(r'^(#{1,6})\s+(.*)$').firstMatch(line);
+      final headingMatch = _headingRe.firstMatch(line);
       if (headingMatch != null) {
         final level = headingMatch.group(1)!.length;
         final text = headingMatch.group(2)!;
-        blocks.add(BlockNode(
-          type: 'heading',
-          attrs: {'level': level},
-          content: Fragment(_parseInlineMarkdown(text)),
-          inlineContent: true,
-        ));
+        blocks.add(
+          BlockNode(
+            type: 'heading',
+            attrs: {'level': level},
+            content: Fragment(_parseInlineMarkdown(text)),
+            inlineContent: true,
+          ),
+        );
         i++;
         continue;
       }
@@ -491,9 +511,7 @@ class MarkdownSerializer {
       }
 
       // Image on its own line: ![alt](url)
-      final imageMatch =
-          RegExp(r'^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)\s*$')
-              .firstMatch(line);
+      final imageMatch = _blockImageRe.firstMatch(line);
       if (imageMatch != null) {
         final attrs = <String, Object?>{
           'src': imageMatch.group(2)!,
@@ -503,12 +521,9 @@ class MarkdownSerializer {
         if (title != null) {
           attrs['title'] = title;
         }
-        blocks.add(BlockNode(
-          type: 'image',
-          attrs: attrs,
-          isLeaf: true,
-          isAtom: true,
-        ));
+        blocks.add(
+          BlockNode(type: 'image', attrs: attrs, isLeaf: true, isAtom: true),
+        );
         i++;
         continue;
       }
@@ -565,17 +580,13 @@ class MarkdownSerializer {
       node: BlockNode(
         type: 'code_block',
         attrs: attrs,
-        content:
-            code.isNotEmpty ? Fragment([TextNode(code)]) : Fragment.empty,
+        content: code.isNotEmpty ? Fragment([TextNode(code)]) : Fragment.empty,
       ),
       nextIndex: i,
     );
   }
 
-  ({Node node, int nextIndex}) _parseBlockquote(
-    List<String> lines,
-    int start,
-  ) {
+  ({Node node, int nextIndex}) _parseBlockquote(List<String> lines, int start) {
     final quotedLines = <String>[];
     var i = start;
 
@@ -583,7 +594,7 @@ class MarkdownSerializer {
       final line = lines[i];
       if (line.trimLeft().startsWith('>')) {
         // Remove the leading > and optional space
-        final content = line.trimLeft().replaceFirst(RegExp(r'^>\s?'), '');
+        final content = line.trimLeft().replaceFirst(_blockquoteContentRe, '');
         quotedLines.add(content);
         i++;
       } else if (line.trim().isEmpty && quotedLines.isNotEmpty) {
@@ -606,9 +617,7 @@ class MarkdownSerializer {
     final innerBlocks = _parseLines(quotedLines);
     final content = innerBlocks.isNotEmpty
         ? Fragment(innerBlocks)
-        : Fragment([
-            const BlockNode(type: 'paragraph', inlineContent: true),
-          ]);
+        : Fragment([const BlockNode(type: 'paragraph', inlineContent: true)]);
 
     return (
       node: BlockNode(type: 'blockquote', content: content),
@@ -648,8 +657,7 @@ class MarkdownSerializer {
     return (
       node: BlockNode(
         type: 'code_block',
-        content:
-            code.isNotEmpty ? Fragment([TextNode(code)]) : Fragment.empty,
+        content: code.isNotEmpty ? Fragment([TextNode(code)]) : Fragment.empty,
       ),
       nextIndex: i,
     );
@@ -657,23 +665,20 @@ class MarkdownSerializer {
 
   bool _isTaskListItem(String line) {
     final trimmed = line.trimLeft();
-    return RegExp(r'^[-*]\s+\[([ xX])\]\s').hasMatch(trimmed);
+    return _taskItemRe.hasMatch(trimmed);
   }
 
   bool _isUnorderedListItem(String line) {
     final trimmed = line.trimLeft();
-    return RegExp(r'^[-*]\s').hasMatch(trimmed) && !_isTaskListItem(line);
+    return _unorderedItemRe.hasMatch(trimmed) && !_isTaskListItem(line);
   }
 
   bool _isOrderedListItem(String line) {
     final trimmed = line.trimLeft();
-    return RegExp(r'^\d+\.\s').hasMatch(trimmed);
+    return _orderedItemRe.hasMatch(trimmed);
   }
 
-  ({Node node, int nextIndex}) _parseTaskList(
-    List<String> lines,
-    int start,
-  ) {
+  ({Node node, int nextIndex}) _parseTaskList(List<String> lines, int start) {
     final items = <Node>[];
     var i = start;
 
@@ -681,25 +686,25 @@ class MarkdownSerializer {
       final line = lines[i];
       if (!_isTaskListItem(line)) break;
 
-      final match = RegExp(r'^[-*]\s+\[([ xX])\]\s(.*)$')
-          .firstMatch(line.trimLeft());
+      final match = _taskItemFullRe.firstMatch(line.trimLeft());
       if (match == null) break;
 
-      final checked =
-          match.group(1)!.toLowerCase() == 'x';
+      final checked = match.group(1)!.toLowerCase() == 'x';
       final text = match.group(2)!;
 
-      items.add(BlockNode(
-        type: 'check_item',
-        attrs: {'checked': checked},
-        content: Fragment([
-          BlockNode(
-            type: 'paragraph',
-            content: Fragment(_parseInlineMarkdown(text)),
-            inlineContent: true,
-          ),
-        ]),
-      ));
+      items.add(
+        BlockNode(
+          type: 'check_item',
+          attrs: {'checked': checked},
+          content: Fragment([
+            BlockNode(
+              type: 'paragraph',
+              content: Fragment(_parseInlineMarkdown(text)),
+              inlineContent: true,
+            ),
+          ]),
+        ),
+      );
       i++;
     }
 
@@ -709,38 +714,56 @@ class MarkdownSerializer {
     );
   }
 
+  Node _buildListItem(String text) => BlockNode(
+    type: 'list_item',
+    content: Fragment([
+      BlockNode(
+        type: 'paragraph',
+        content: Fragment(_parseInlineMarkdown(text)),
+        inlineContent: true,
+      ),
+    ]),
+  );
+
   ({Node node, int nextIndex}) _parseUnorderedList(
     List<String> lines,
     int start,
   ) {
     final items = <Node>[];
     var i = start;
+    // Accumulate text for the current item (supports continuation lines).
+    var currentItemText = '';
 
     while (i < lines.length) {
       final line = lines[i];
-      if (!_isUnorderedListItem(line)) {
-        // Check for continuation lines (indented)
-        if (line.trim().isEmpty || _isIndentedContinuation(line)) {
-          i++;
-          continue;
+      if (_isUnorderedListItem(line)) {
+        // Flush previous item if any.
+        if (currentItemText.isNotEmpty || items.isNotEmpty) {
+          if (currentItemText.isNotEmpty) {
+            items.add(_buildListItem(currentItemText));
+          }
         }
+        currentItemText = line.trimLeft().replaceFirst(_unorderedItemRe, '');
+        i++;
+      } else if (items.isNotEmpty || currentItemText.isNotEmpty) {
+        // Continuation line or blank line within the list.
+        if (line.trim().isEmpty || _isIndentedContinuation(line)) {
+          if (currentItemText.isNotEmpty && line.trim().isNotEmpty) {
+            // Append continuation text (strip leading indent).
+            currentItemText += ' ${line.trimLeft()}';
+          }
+          i++;
+        } else {
+          break;
+        }
+      } else {
         break;
       }
+    }
 
-      final text =
-          line.trimLeft().replaceFirst(RegExp(r'^[-*]\s'), '');
-
-      items.add(BlockNode(
-        type: 'list_item',
-        content: Fragment([
-          BlockNode(
-            type: 'paragraph',
-            content: Fragment(_parseInlineMarkdown(text)),
-            inlineContent: true,
-          ),
-        ]),
-      ));
-      i++;
+    // Flush final item.
+    if (currentItemText.isNotEmpty) {
+      items.add(_buildListItem(currentItemText));
     }
 
     return (
@@ -756,35 +779,39 @@ class MarkdownSerializer {
     final items = <Node>[];
     var i = start;
     int? startNum;
+    var currentItemText = '';
 
     while (i < lines.length) {
       final line = lines[i];
-      if (!_isOrderedListItem(line)) {
-        if (line.trim().isEmpty || _isIndentedContinuation(line)) {
-          i++;
-          continue;
+      if (_isOrderedListItem(line)) {
+        // Flush previous item.
+        if (currentItemText.isNotEmpty) {
+          items.add(_buildListItem(currentItemText));
         }
+
+        final match = _orderedItemFullRe.firstMatch(line.trimLeft());
+        if (match == null) break;
+
+        startNum ??= int.parse(match.group(1)!);
+        currentItemText = match.group(2)!;
+        i++;
+      } else if (items.isNotEmpty || currentItemText.isNotEmpty) {
+        if (line.trim().isEmpty || _isIndentedContinuation(line)) {
+          if (currentItemText.isNotEmpty && line.trim().isNotEmpty) {
+            currentItemText += ' ${line.trimLeft()}';
+          }
+          i++;
+        } else {
+          break;
+        }
+      } else {
         break;
       }
+    }
 
-      final match =
-          RegExp(r'^(\d+)\.\s(.*)$').firstMatch(line.trimLeft());
-      if (match == null) break;
-
-      startNum ??= int.parse(match.group(1)!);
-      final text = match.group(2)!;
-
-      items.add(BlockNode(
-        type: 'list_item',
-        content: Fragment([
-          BlockNode(
-            type: 'paragraph',
-            content: Fragment(_parseInlineMarkdown(text)),
-            inlineContent: true,
-          ),
-        ]),
-      ));
-      i++;
+    // Flush final item.
+    if (currentItemText.isNotEmpty) {
+      items.add(_buildListItem(currentItemText));
     }
 
     return (
@@ -800,10 +827,7 @@ class MarkdownSerializer {
   bool _isIndentedContinuation(String line) =>
       line.startsWith('  ') || line.startsWith('\t');
 
-  ({Node node, int nextIndex}) _parseParagraph(
-    List<String> lines,
-    int start,
-  ) {
+  ({Node node, int nextIndex}) _parseParagraph(List<String> lines, int start) {
     final paragraphLines = <String>[];
     var i = start;
 
@@ -815,7 +839,7 @@ class MarkdownSerializer {
 
       // Stop at block-level constructs
       if (_isHorizontalRule(line)) break;
-      if (RegExp(r'^#{1,6}\s').hasMatch(line)) break;
+      if (_headingBreakRe.hasMatch(line)) break;
       if (line.trimLeft().startsWith('```')) break;
       if (line.trimLeft().startsWith('>')) break;
       if (_isUnorderedListItem(line)) break;
@@ -837,6 +861,31 @@ class MarkdownSerializer {
     );
   }
 
+  // ── Precompiled patterns ────────────────────────────────────────
+
+  static final _headingRe = RegExp(r'^(#{1,6})\s+(.*)$');
+  static final _blockImageRe = RegExp(
+    r'^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)\s*$',
+  );
+  static final _blockquoteContentRe = RegExp(r'^>\s?');
+  static final _taskItemRe = RegExp(r'^[-*]\s+\[([ xX])\]\s');
+  static final _taskItemFullRe = RegExp(r'^[-*]\s+\[([ xX])\]\s(.*)$');
+  static final _unorderedItemRe = RegExp(r'^[-*]\s');
+  static final _orderedItemRe = RegExp(r'^\d+\.\s');
+  static final _orderedItemFullRe = RegExp(r'^(\d+)\.\s(.*)$');
+  static final _headingBreakRe = RegExp(r'^#{1,6}\s');
+  static final _inlineImageRe = RegExp(
+    r'!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)',
+  );
+  static final _inlineLinkRe = RegExp(
+    r'\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)',
+  );
+  static final _inlineBoldRe = RegExp(r'\*\*(.+?)\*\*');
+  static final _inlineItalicRe = RegExp(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)');
+  static final _inlineStrikeRe = RegExp(r'~~(.+?)~~');
+  static final _inlineCodeRe = RegExp(r'`([^`]+)`');
+  static final _inlineWidgetRe = RegExp(r'<!-- widget:([^\s]+) ({.*}) -->');
+
   // ── Inline Markdown parsing ───────────────────────────────────────
 
   List<Node> _parseInlineMarkdown(String text) {
@@ -847,79 +896,92 @@ class MarkdownSerializer {
     return nodes;
   }
 
-  void _parseInlineRecursive(
-    String text,
-    List<Mark> marks,
-    List<Node> nodes,
-  ) {
+  void _parseInlineRecursive(String text, List<Mark> marks, List<Node> nodes) {
     if (text.isEmpty) return;
 
     // Find the earliest inline pattern
     _InlineMatch? earliest;
 
     // Image: ![alt](url "title")
-    final imageRe = RegExp(r'!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)');
-    final imageMatch = imageRe.firstMatch(text);
+    final imageMatch = _inlineImageRe.firstMatch(text);
     if (imageMatch != null) {
       earliest = _choosEarliest(
         earliest,
-        _InlineMatch(imageMatch.start, imageMatch.end, 'image',
-            match: imageMatch),
+        _InlineMatch(
+          imageMatch.start,
+          imageMatch.end,
+          'image',
+          match: imageMatch,
+        ),
       );
     }
 
     // Link: [text](url "title")
-    final linkRe = RegExp(r'\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)');
-    final linkMatch = linkRe.firstMatch(text);
+    final linkMatch = _inlineLinkRe.firstMatch(text);
     if (linkMatch != null) {
       earliest = _choosEarliest(
         earliest,
-        _InlineMatch(linkMatch.start, linkMatch.end, 'link',
-            match: linkMatch),
+        _InlineMatch(linkMatch.start, linkMatch.end, 'link', match: linkMatch),
       );
     }
 
     // Bold: **text**
-    final boldRe = RegExp(r'\*\*(.+?)\*\*');
-    final boldMatch = boldRe.firstMatch(text);
+    final boldMatch = _inlineBoldRe.firstMatch(text);
     if (boldMatch != null) {
       earliest = _choosEarliest(
         earliest,
-        _InlineMatch(boldMatch.start, boldMatch.end, 'bold',
-            match: boldMatch),
+        _InlineMatch(boldMatch.start, boldMatch.end, 'bold', match: boldMatch),
       );
     }
 
     // Italic: *text*
-    final italicRe = RegExp(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)');
-    final italicMatch = italicRe.firstMatch(text);
+    final italicMatch = _inlineItalicRe.firstMatch(text);
     if (italicMatch != null) {
       earliest = _choosEarliest(
         earliest,
-        _InlineMatch(italicMatch.start, italicMatch.end, 'italic',
-            match: italicMatch),
+        _InlineMatch(
+          italicMatch.start,
+          italicMatch.end,
+          'italic',
+          match: italicMatch,
+        ),
       );
     }
 
     // Strikethrough: ~~text~~
-    final strikeRe = RegExp(r'~~(.+?)~~');
-    final strikeMatch = strikeRe.firstMatch(text);
+    final strikeMatch = _inlineStrikeRe.firstMatch(text);
     if (strikeMatch != null) {
       earliest = _choosEarliest(
         earliest,
-        _InlineMatch(strikeMatch.start, strikeMatch.end, 'strikethrough',
-            match: strikeMatch),
+        _InlineMatch(
+          strikeMatch.start,
+          strikeMatch.end,
+          'strikethrough',
+          match: strikeMatch,
+        ),
       );
     }
 
     // Inline code: `text`
-    final codeRe = RegExp(r'`([^`]+)`');
-    final codeMatch = codeRe.firstMatch(text);
+    final codeMatch = _inlineCodeRe.firstMatch(text);
     if (codeMatch != null) {
       earliest = _choosEarliest(
         earliest,
-        _InlineMatch(codeMatch.start, codeMatch.end, 'code',
-            match: codeMatch),
+        _InlineMatch(codeMatch.start, codeMatch.end, 'code', match: codeMatch),
+      );
+    }
+
+    // Inline widget comment: <!-- widget:type {"key":"value"} -->
+    final widgetMatch = _inlineWidgetRe.firstMatch(text);
+    if (widgetMatch != null) {
+      earliest = _choosEarliest(
+        earliest,
+        _InlineMatch(
+          widgetMatch.start,
+          widgetMatch.end,
+          'widget',
+          match: widgetMatch,
+        ),
       );
     }
 
@@ -940,20 +1002,14 @@ class MarkdownSerializer {
     switch (earliest.type) {
       case 'image':
         final m = earliest.match!;
-        final attrs = <String, Object?>{
-          'src': m.group(2)!,
-          'alt': m.group(1)!,
-        };
+        final attrs = <String, Object?>{'src': m.group(2)!, 'alt': m.group(1)!};
         final title = m.group(3);
         if (title != null) {
           attrs['title'] = title;
         }
-        nodes.add(BlockNode(
-          type: 'image',
-          attrs: attrs,
-          isLeaf: true,
-          isAtom: true,
-        ));
+        nodes.add(
+          BlockNode(type: 'image', attrs: attrs, isLeaf: true, isAtom: true),
+        );
 
       case 'link':
         final m = earliest.match!;
@@ -987,6 +1043,14 @@ class MarkdownSerializer {
         final codeText = m.group(1)!;
         final newMarks = [...marks, Mark.code];
         nodes.add(TextNode(codeText, marks: newMarks));
+
+      case 'widget':
+        final m = earliest.match!;
+        final widgetType = m.group(1)!.replaceAll('--&gt;', '-->');
+        final attrsJson = m.group(2)!.replaceAll('--&gt;', '-->');
+        final attrs = (jsonDecode(attrsJson) as Map<String, dynamic>)
+            .cast<String, Object?>();
+        nodes.add(InlineWidgetNode(widgetType: widgetType, attrs: attrs));
     }
 
     // Parse the rest
@@ -995,10 +1059,7 @@ class MarkdownSerializer {
     }
   }
 
-  _InlineMatch? _choosEarliest(
-    _InlineMatch? current,
-    _InlineMatch candidate,
-  ) {
+  _InlineMatch? _choosEarliest(_InlineMatch? current, _InlineMatch candidate) {
     if (current == null) return candidate;
     if (candidate.start < current.start) return candidate;
     return current;
